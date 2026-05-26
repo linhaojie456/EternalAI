@@ -1,4 +1,4 @@
-import threading, time, random, os
+import threading, time, random, os, ast
 
 # 推理引擎延迟加载
 _model = None
@@ -32,7 +32,19 @@ def get_genome_code():
 def apply_genome_code(new_code):
     path = _get_genome_path()
     os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "w") as f: f.write(new_code)
+    # 先保存旧代码，用于安全引擎回滚
+    old_code = ""
+    if os.path.exists(path):
+        with open(path, "r") as f: old_code = f.read()
+    try:
+        # 语法检查
+        ast.parse(new_code)
+        # 写入新代码
+        with open(path, "w") as f: f.write(new_code)
+    except SyntaxError:
+        # 语法错误，拒绝写入，并通过异常通知安全引擎
+        raise
+    return old_code
 
 def generate_code_from_chat(user_req, current_code):
     try:
@@ -41,6 +53,14 @@ def generate_code_from_chat(user_req, current_code):
         return model.generate(prompt, max_tokens=500)
     except:
         return current_code
+
+def check_genome_syntax(code):
+    """供安全引擎调用，检查 Python 语法"""
+    try:
+        ast.parse(code)
+        return "通过"
+    except SyntaxError as e:
+        return f"语法错误: {e}"
 
 class SelfEvolutionEngine:
     def __init__(self):
