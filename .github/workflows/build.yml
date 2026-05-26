@@ -26,9 +26,10 @@ jobs:
         run: |
           pip install -q huggingface_hub
           hf download onnx-community/DeepSeek-R1-Distill-Qwen-1.5B-ONNX \
-            model_quantized.onnx tokenizer.json tokenizer_config.json \
+            onnx/model_quantized.onnx tokenizer.json tokenizer_config.json \
             --local-dir .
-          mv model_quantized.onnx model.onnx
+          mv onnx/model_quantized.onnx model.onnx
+          rm -rf onnx
 
       - name: Build debug APK
         run: ./gradlew assembleDebug
