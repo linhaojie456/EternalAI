@@ -1,0 +1,7 @@
+*.onnx
+*.data
+*.zip
+/build
+/app/build
+/.gradle
+app/src/main/assets/model/

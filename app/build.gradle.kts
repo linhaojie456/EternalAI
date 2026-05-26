@@ -1,0 +1,40 @@
+plugins {
+    id("com.android.application")
+    id("org.jetbrains.kotlin.android")
+    id("com.chaquo.python")
+}
+android {
+    namespace = "com.eternal.ai"
+    compileSdk = 34
+    defaultConfig {
+        applicationId = "com.eternal.ai"
+        minSdk = 26
+        targetSdk = 34
+        versionCode = 1
+        versionName = "1.0"
+        ndk { abiFilters += "arm64-v8a" }
+    }
+    buildTypes { release { isMinifyEnabled = false } }
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+    kotlinOptions { jvmTarget = "17" }
+}
+chaquopy {
+    defaultConfig {
+        buildPython("/data/data/com.termux/files/usr/bin/python3.10")
+        pip {
+            install("tokenizers")
+            install("numpy")
+        }
+    }
+}
+dependencies {
+    implementation("androidx.core:core-ktx:1.10.1")
+    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.6.1")
+    implementation("androidx.compose.ui:ui:1.5.0")
+    implementation("androidx.compose.material3:material3:1.1.0")
+    implementation("androidx.activity:activity-compose:1.7.2")
+    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.17.1")
+}
