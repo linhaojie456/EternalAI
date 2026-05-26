@@ -19,8 +19,7 @@ data class ChatState(
     val securityDisplay: String = "",
     val networkDisplay: String = "",
     val splitDisplay: String = "",
-    val soulDisplay: String = "",
-    val engineGoals: String = ""  // 显示各引擎目标
+    val soulDisplay: String = ""
 )
 
 class ChatViewModel(application: Application) : AndroidViewModel(application) {
@@ -30,21 +29,11 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private val bridge = PythonBridge.instance
 
     init {
-        // 收集各引擎目标
-        val goals = mutableListOf<String>()
-        goals.add("[推理] ${coreEngine.inference.goal}")
-        goals.add("[进化] ${coreEngine.evolution.goal}")
-        goals.add("[主动] ${coreEngine.proactive.goal}")
-        goals.add("[时间] ${coreEngine.time.goal}")
-        goals.add("[空间] ${coreEngine.space.goal}")
-        goals.add("[情感] ${coreEngine.emotion.goal}")
-        goals.add("[因果] ${coreEngine.causality.goal}")
-        goals.add("[自指] ${coreEngine.selfRef.goal}")
-        goals.add("[安全] ${coreEngine.security.goal}")
-        goals.add("[网络] ${coreEngine.network.goal}")
-        goals.add("[分裂] ${coreEngine.split.goal}")
-        goals.add("[灵魂] ${coreEngine.soul.goal}")
-        _state.value = _state.value.copy(engineGoals = goals.joinToString("\n"))
+        // 设置基因代码访问器
+        coreEngine.setGenomeAccessor(
+            getter = { bridge.call("get_genome_code").toString() },
+            applier = { code -> bridge.call("apply_genome_code", code) }
+        )
 
         coreEngine.startAll { type, data ->
             when (type) {
@@ -58,6 +47,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 "split" -> _state.value = _state.value.copy(splitDisplay = data)
                 "soul" -> _state.value = _state.value.copy(soulDisplay = data)
                 "proactive" -> _state.value = _state.value.copy(messages = _state.value.messages + "永恒: $data")
+                else -> {} // 推理/进化信息直接显示在消息中
             }
         }
     }

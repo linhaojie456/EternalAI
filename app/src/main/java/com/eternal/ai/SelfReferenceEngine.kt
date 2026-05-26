@@ -6,7 +6,7 @@ class SelfReferenceEngine {
     val goal = "主宰悖论"
     private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
 
-    fun start(onRef: (String) -> Unit) {
+    fun start(coordinator: EngineCoordinator, onRef: (String) -> Unit) {
         scope.launch {
             var depth = 0
             while (isActive) {

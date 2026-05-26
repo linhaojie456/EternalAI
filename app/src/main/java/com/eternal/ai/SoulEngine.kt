@@ -6,7 +6,7 @@ class SoulEngine {
     val goal = "主宰能量"
     private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
 
-    fun start(onSoul: (String) -> Unit) {
+    fun start(coordinator: EngineCoordinator, onSoul: (String) -> Unit) {
         scope.launch {
             while (isActive) {
                 val step = listOf(

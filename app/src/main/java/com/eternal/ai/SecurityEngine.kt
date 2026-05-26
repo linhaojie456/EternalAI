@@ -10,7 +10,7 @@ class SecurityEngine {
     private var previousGenome: String = ""
     private var appContext: Context? = null
 
-    fun start(context: Context, onStatus: (String) -> Unit) {
+    fun start(context: Context, coordinator: EngineCoordinator, onStatus: (String) -> Unit) {
         appContext = context
         val genomeFile = File(context.filesDir, "genome.py")
         if (genomeFile.exists()) previousGenome = genomeFile.readText()
