@@ -41,17 +41,23 @@ jobs:
       - name: Generate Gradle Wrapper
         run: gradle wrapper --gradle-version 8.9
 
-      - name: Fix AGP version compatibility
+      - name: Fix configuration
         run: |
+          # 降级 AGP 到兼容 Chaquopy 的版本
           sed -i 's/id("com.android.application") version "8.7.3"/id("com.android.application") version "8.5.2"/' build.gradle.kts
           sed -i 's/id("org.jetbrains.kotlin.android") version "1.9.22"/id("org.jetbrains.kotlin.android") version "1.9.0"/' build.gradle.kts
+          # 移除硬编码的 Python 路径
           sed -i '/buildPython/d' app/build.gradle.kts
           sed -i '/pythonVersion/d' app/build.gradle.kts
+          # 添加 AppCompat 依赖（解决主题缺失）
+          sed -i '/dependencies {/a \    implementation("androidx.appcompat:appcompat:1.6.1")' app/build.gradle.kts
+          # 不压缩 .onnx 文件（避免打包时 OOM）
+          sed -i '/android {/a \    aaptOptions { noCompress "onnx" }' app/build.gradle.kts
 
-      - name: Build debug APK (with increased heap)
-        run: ./gradlew assembleDebug -Dorg.gradle.jvmargs="-Xmx3g"
+      - name: Build debug APK (加大内存)
+        run: ./gradlew assembleDebug -Dorg.gradle.jvmargs="-Xmx4g"
         env:
-          GRADLE_OPTS: "-Xmx3g"
+          GRADLE_OPTS: "-Xmx4g"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
