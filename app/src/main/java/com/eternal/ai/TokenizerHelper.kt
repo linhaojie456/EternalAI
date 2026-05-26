@@ -16,6 +16,6 @@ class TokenizerHelper(modelDir: File) {
     }
 
     fun eosTokenId(): Long {
-        return tokenizer.getTokenizer().eosTokenId
+        return 151643L
     }
 }
