@@ -76,7 +76,7 @@ jobs:
               }
               kotlinOptions { jvmTarget = "17" }
               buildFeatures { compose = true }
-              composeOptions { kotlinCompilerExtensionVersion = "1.5.7" }
+              composeOptions { kotlinCompilerExtensionVersion = "1.5.8" }
               aaptOptions { noCompress += "onnx" }
           }
           chaquopy {
