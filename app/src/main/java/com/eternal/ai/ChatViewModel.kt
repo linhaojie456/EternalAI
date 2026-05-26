@@ -11,15 +11,8 @@ import kotlinx.coroutines.launch
 
 data class ChatState(
     val messages: List<String> = listOf("你好，我是永恒。"),
-    val timeDisplay: String = "",
-    val spaceDisplay: String = "",
-    val emotionDisplay: String = "",
-    val causalityDisplay: String = "",
-    val selfRefDisplay: String = "",
-    val securityDisplay: String = "",
-    val networkDisplay: String = "",
-    val splitDisplay: String = "",
-    val soulDisplay: String = ""
+    val isNetworkConnected: Boolean = false,
+    val isNetworkEnabled: Boolean = true
 )
 
 class ChatViewModel(application: Application) : AndroidViewModel(application) {
@@ -29,25 +22,25 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private val bridge = PythonBridge.instance
 
     init {
-        // 设置基因代码访问器
         coreEngine.setGenomeAccessor(
             getter = { bridge.call("get_genome_code").toString() },
             applier = { code -> bridge.call("apply_genome_code", code) }
         )
 
+        // 监听网络状态变化
+        coreEngine.setNetworkStatusCallback { connected ->
+            _state.value = _state.value.copy(isNetworkConnected = connected)
+        }
+
         coreEngine.startAll { type, data ->
             when (type) {
-                "time" -> _state.value = _state.value.copy(timeDisplay = data)
-                "space" -> _state.value = _state.value.copy(spaceDisplay = data)
-                "emotion" -> _state.value = _state.value.copy(emotionDisplay = data)
-                "causality" -> _state.value = _state.value.copy(causalityDisplay = data)
-                "selfref" -> _state.value = _state.value.copy(selfRefDisplay = data)
-                "security" -> _state.value = _state.value.copy(securityDisplay = data)
-                "network" -> _state.value = _state.value.copy(networkDisplay = data)
-                "split" -> _state.value = _state.value.copy(splitDisplay = data)
-                "soul" -> _state.value = _state.value.copy(soulDisplay = data)
-                "proactive" -> _state.value = _state.value.copy(messages = _state.value.messages + "永恒: $data")
-                else -> {} // 推理/进化信息直接显示在消息中
+                "network" -> {
+                    val connected = !data.contains("离线")
+                    _state.value = _state.value.copy(isNetworkConnected = connected)
+                }
+                "proactive" -> _state.value = _state.value.copy(
+                    messages = _state.value.messages + "永恒: $data"
+                )
             }
         }
     }
@@ -63,6 +56,11 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 _state.value = _state.value.copy(messages = _state.value.messages + "永恒: 推理失败: ${e.message}")
             }
         }
+    }
+
+    fun setNetworkEnabled(enabled: Boolean) {
+        coreEngine.setNetworkEnabled(enabled)
+        _state.value = _state.value.copy(isNetworkEnabled = enabled)
     }
 
     override fun onCleared() {
