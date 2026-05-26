@@ -13,19 +13,6 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 fun ChatScreen(chatVM: ChatViewModel = viewModel()) {
     val state by chatVM.state.collectAsState()
     Column(Modifier.fillMaxSize()) {
-        // 状态面板（所有引擎简要显示）
-        Row(Modifier.padding(4.dp)) {
-            if (state.timeDisplay.isNotEmpty()) Text("[时间] ${state.timeDisplay}", modifier = Modifier.weight(1f))
-            if (state.spaceDisplay.isNotEmpty()) Text("[空间] ${state.spaceDisplay}", modifier = Modifier.weight(1f))
-            if (state.emotionDisplay.isNotEmpty()) Text("[情感] ${state.emotionDisplay}", modifier = Modifier.weight(1f))
-            if (state.causalityDisplay.isNotEmpty()) Text("[因果] ${state.causalityDisplay}", modifier = Modifier.weight(1f))
-            if (state.selfRefDisplay.isNotEmpty()) Text("[自指] ${state.selfRefDisplay}", modifier = Modifier.weight(1f))
-            if (state.securityDisplay.isNotEmpty()) Text("[安全] ${state.securityDisplay}", modifier = Modifier.weight(1f))
-            if (state.networkDisplay.isNotEmpty()) Text("[网络] ${state.networkDisplay}", modifier = Modifier.weight(1f))
-            if (state.splitDisplay.isNotEmpty()) Text("[分裂] ${state.splitDisplay}", modifier = Modifier.weight(1f))
-            if (state.soulDisplay.isNotEmpty()) Text("[灵魂] ${state.soulDisplay}", modifier = Modifier.weight(1f))
-        }
-        Divider()
         LazyColumn(Modifier.weight(1f)) {
             items(state.messages) { msg ->
                 SelectionContainer { Text(msg, modifier = Modifier.padding(8.dp)) }

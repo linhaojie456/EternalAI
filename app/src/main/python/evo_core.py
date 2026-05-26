@@ -1,4 +1,4 @@
-import ast, os, threading, time, random
+import threading, time, random, os, ast
 
 _model = None
 
@@ -31,9 +31,11 @@ def get_genome_code():
 def apply_genome_code(new_code):
     path = _get_genome_path()
     os.makedirs(os.path.dirname(path), exist_ok=True)
-    # 语法检查
-    ast.parse(new_code)
-    with open(path, "w") as f: f.write(new_code)
+    try:
+        ast.parse(new_code)
+        with open(path, "w") as f: f.write(new_code)
+    except SyntaxError:
+        raise
 
 def generate_code_from_chat(user_req, current_code):
     try:
@@ -44,7 +46,6 @@ def generate_code_from_chat(user_req, current_code):
         return current_code
 
 def check_genome_syntax(code):
-    """供安全引擎调用，检查 Python 语法"""
     try:
         ast.parse(code)
         return "通过"

@@ -1,20 +1,16 @@
 package com.eternal.ai
-
 import kotlinx.coroutines.*
-
 class CausalityEngine {
     val goal = "主宰逻辑"
     private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
-
     fun start(coordinator: EngineCoordinator, onJudgment: (String) -> Unit) {
         scope.launch {
+            val judgments = listOf("先因后果", "先果后因", "因果循环")
             while (isActive) {
-                val judgments = listOf("先因后果", "先果后因", "因果循环", "先因无果", "先果无因")
-                onJudgment("[因果] 目标：$goal | 判定：${judgments.random()}")
-                delay(10000)
+                onJudgment("[因果] 判定：${judgments.random()}")
+                delay(12000)
             }
         }
     }
-
     fun stop() { scope.cancel() }
 }

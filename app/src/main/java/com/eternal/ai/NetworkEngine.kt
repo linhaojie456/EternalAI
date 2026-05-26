@@ -1,37 +1,23 @@
 package com.eternal.ai
-
 import kotlinx.coroutines.*
 import java.net.URL
 import java.net.URLEncoder
-
 class NetworkEngine {
     val goal = "主宰信息"
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
-
     fun start(coordinator: EngineCoordinator, onInfo: (String) -> Unit) {
         scope.launch {
             while (isActive) {
                 try {
                     val ip = URL("https://api.ipify.org").readText()
-                    onInfo("[网络] 目标：$goal | 公网IP: $ip")
+                    onInfo("[网络] IP: $ip")
                 } catch (e: Exception) {
-                    onInfo("[网络] 目标：$goal | 离线模式")
+                    onInfo("[网络] 离线")
                 }
                 delay(120000)
             }
         }
-        scope.launch {
-            delay(5000)
-            while (isActive) {
-                try {
-                    URL("https://wttr.in/?format=j1").readText()
-                    onInfo("[网络] 目标：$goal | 天气数据已更新")
-                } catch (_: Exception) {}
-                delay(600000)
-            }
-        }
     }
-
     fun search(query: String, callback: (String) -> Unit) {
         scope.launch {
             try {
@@ -40,22 +26,12 @@ class NetworkEngine {
                 val response = URL(url).readText()
                 val json = org.json.JSONObject(response)
                 val abstract = json.optString("Abstract", "")
-                if (abstract.isNotEmpty()) {
-                    callback("[搜索] $abstract")
-                } else {
-                    val topics = json.optJSONArray("RelatedTopics")
-                    if (topics != null && topics.length() > 0) {
-                        val first = topics.getJSONObject(0).optString("Text", "")
-                        callback("[搜索] $first")
-                    } else {
-                        callback("[搜索] 未找到相关信息")
-                    }
-                }
+                if (abstract.isNotEmpty()) callback("[搜索] $abstract")
+                else callback("[搜索] 未找到")
             } catch (e: Exception) {
-                callback("[搜索] 请求失败: ${e.message}")
+                callback("[搜索] 失败：${e.message}")
             }
         }
     }
-
     fun stop() { scope.cancel() }
 }

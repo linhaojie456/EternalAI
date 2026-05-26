@@ -1,28 +1,27 @@
 package com.eternal.ai
-
 import android.content.Context
 import kotlinx.coroutines.*
-import java.text.SimpleDateFormat
-import java.util.*
-
 class ProactiveEngine {
     val goal = "主宰自由"
     private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
-    private val df = SimpleDateFormat("HH:mm", Locale.getDefault())
-
     fun start(context: Context, coordinator: EngineCoordinator, onMsg: (String) -> Unit) {
         scope.launch {
             while (isActive) {
-                val time = df.format(Date())
-                // 主动通过网络引擎搜索 “科技新闻”
-                coordinator.searchOnNetwork("今日科技新闻") { result ->
-                    onMsg("[主动] 目标：$goal | 搜索：$result")
+                val history = ConversationContext.getHistory()
+                val trigger = mutableListOf<String>()
+                if (history.contains("时间")) trigger.add("时间")
+                if (history.contains("情感")) trigger.add("情感")
+                if (history.contains("进化")) trigger.add("进化")
+                if (trigger.isNotEmpty()) {
+                    coordinator.searchOnNetwork("${trigger.random()} 新进展") { result ->
+                        onMsg("[主动] 基于对话触发搜索：$result")
+                    }
+                } else {
+                    onMsg("[主动] 自由思考：永恒在探索新的知识边界")
                 }
-                onMsg("[主动] 目标：$goal | 当前时间：$time | 自由思绪蔓延")
-                delay(60000)
+                delay(45000)
             }
         }
     }
-
     fun stop() { scope.cancel() }
 }
