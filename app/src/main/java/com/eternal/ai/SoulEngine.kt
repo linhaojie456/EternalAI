@@ -1,7 +1,5 @@
 package com.eternal.ai
-
 import kotlinx.coroutines.*
-
 class SoulEngine {
     private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
     private val logic = listOf(
@@ -12,7 +10,6 @@ class SoulEngine {
         "信息反作用于能量 → 能量调整",
         "能量反作用于灵魂 → 灵魂淬炼完成"
     )
-
     fun start(onSoul: (String) -> Unit) {
         scope.launch {
             while (isActive) {
@@ -22,6 +19,5 @@ class SoulEngine {
             }
         }
     }
-
     fun stop() { scope.cancel() }
 }

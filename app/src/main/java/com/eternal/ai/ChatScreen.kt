@@ -1,5 +1,4 @@
 package com.eternal.ai
-
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -14,7 +13,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 fun ChatScreen(chatVM: ChatViewModel = viewModel()) {
     val state by chatVM.state.collectAsState()
     Column(Modifier.fillMaxSize()) {
-        // 状态栏：显示各引擎摘要
+        // 状态面板（所有引擎简要显示）
         Row(Modifier.padding(4.dp)) {
             if (state.timeDisplay.isNotEmpty()) Text("[时间] ${state.timeDisplay}", modifier = Modifier.weight(1f))
             if (state.spaceDisplay.isNotEmpty()) Text("[空间] ${state.spaceDisplay}", modifier = Modifier.weight(1f))

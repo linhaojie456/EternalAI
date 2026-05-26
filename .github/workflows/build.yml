@@ -15,31 +15,29 @@ jobs:
         with: {python-version: '3.10'}
       - name: Create model directory
         run: mkdir -p app/src/main/assets/model
-      - name: Download Qwen2.5-0.5B ONNX model (resilient)
+      - name: Download Qwen2.5-0.5B ONNX model (fixed)
         working-directory: app/src/main/assets/model
         run: |
           pip install -q huggingface_hub
           python3 << 'PYEOF'
           from huggingface_hub import hf_hub_download
-          import os, time, sys
+          import os, sys, time
 
           repo = "onnx-community/Qwen2.5-0.5B-Instruct"
-          files_needed = {
-              "model.onnx": 500_000_000,   # 至少 500MB
-              "tokenizer.json": 1_000_000,
-              "tokenizer_config.json": 100
-          }
+          files = [
+              ("model.onnx", 500_000_000),
+              ("tokenizer.json", 1_000_000),
+              ("tokenizer_config.json", 100)
+          ]
 
-          for fname, min_size in files_needed.items():
-              success = False
+          for fname, min_size in files:
               for attempt in range(3):
                   try:
                       print(f"Downloading {fname} (attempt {attempt+1})...")
-                      path = hf_hub_download(repo, fname, local_dir=".", resume=True)
+                      path = hf_hub_download(repo, fname, local_dir=".", resume_download=True)
                       size = os.path.getsize(path)
                       if size >= min_size:
                           print(f"  ✓ {fname}: {size:,} bytes")
-                          success = True
                           break
                       else:
                           print(f"  ⚠ {fname} size {size:,} < {min_size:,}, retrying...")
@@ -47,7 +45,7 @@ jobs:
                   except Exception as e:
                       print(f"  ✗ Error: {e}")
                   time.sleep(2)
-              if not success:
+              else:
                   print(f"Failed to download {fname}")
                   sys.exit(1)
           print("All model files downloaded successfully.")

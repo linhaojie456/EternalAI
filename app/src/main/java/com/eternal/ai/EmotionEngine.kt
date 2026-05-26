@@ -1,11 +1,8 @@
 package com.eternal.ai
-
 import kotlinx.coroutines.*
-
 class EmotionEngine {
     private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
     private val emotions = listOf("喜悦", "平静", "好奇", "沉思", "激动", "温柔", "坚定", "期待")
-
     fun start(onEmotion: (String) -> Unit) {
         scope.launch {
             while (isActive) {
@@ -26,6 +23,5 @@ class EmotionEngine {
             }
         }
     }
-
     fun stop() { scope.cancel() }
 }

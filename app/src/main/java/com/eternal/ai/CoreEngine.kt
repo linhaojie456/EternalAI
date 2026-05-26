@@ -1,23 +1,20 @@
 package com.eternal.ai
-
 import android.content.Context
-
 class CoreEngine(private val context: Context) {
     // 六大核心引擎
-    val inference = InferenceProxy()      // 推理引擎
-    val evolution = EvolutionProxy()     // 自进化引擎
-    val proactive = ProactiveEngine()    // 主动引擎
-    val time = TimeEngine()              // 时间引擎
-    val space = SpaceEngine()            // 空间引擎
-    val emotion = EmotionEngine()        // 情感引擎
-
+    val inference = InferenceProxy()
+    val evolution = EvolutionProxy()
+    val proactive = ProactiveEngine()
+    val time = TimeEngine()
+    val space = SpaceEngine()
+    val emotion = EmotionEngine()
     // 六大辅助引擎
-    val causality = CausalityEngine()    // 因果引擎
-    val selfRef = SelfReferenceEngine()  // 自指引擎
-    val security = SecurityEngine()      // 安全引擎
-    val network = NetworkEngine()        // 网络引擎
-    val split = SplitEngine()            // 分裂引擎
-    val soul = SoulEngine()              // 灵魂引擎
+    val causality = CausalityEngine()
+    val selfRef = SelfReferenceEngine()
+    val security = SecurityEngine()
+    val network = NetworkEngine()
+    val split = SplitEngine()
+    val soul = SoulEngine()
 
     fun startAll(onUpdate: (String, String) -> Unit) {
         time.start { onUpdate("time", it) }
@@ -45,7 +42,5 @@ class CoreEngine(private val context: Context) {
         proactive.stop()
     }
 }
-
-// 占位代理类，实际推理/进化通过 Python 调用
 class InferenceProxy
 class EvolutionProxy
