@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.Button
 import androidx.compose.material3.Divider
 import androidx.compose.material3.OutlinedTextField
@@ -33,7 +34,9 @@ fun DevScreen(devVM: DevViewModel = viewModel()) {
         )
         Divider()
         LazyColumn(Modifier.weight(0.4f)) {
-            items(state.devMessages) { msg -> Text(msg, modifier = Modifier.padding(4.dp)) }
+            items(state.devMessages) { msg ->
+                SelectionContainer { Text(msg, modifier = Modifier.padding(4.dp)) }
+            }
         }
         Row(Modifier.padding(4.dp)) {
             var input by remember { mutableStateOf("") }

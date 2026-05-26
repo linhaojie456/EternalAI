@@ -18,7 +18,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private var engine: EternalInference? = null
 
     fun sendMessage(text: String) {
-        _state.value = _state.value.copy(messages = _state.value.messages + "用户: $text")
+        _state.value = _state.value.copy(messages = _state.value.messages + "造物主: $text")
         viewModelScope.launch {
             if (engine == null) {
                 try {

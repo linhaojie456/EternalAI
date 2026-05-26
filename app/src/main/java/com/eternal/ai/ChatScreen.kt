@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.Button
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -25,7 +26,7 @@ fun ChatScreen(chatVM: ChatViewModel = viewModel()) {
     Column(Modifier.fillMaxSize()) {
         LazyColumn(Modifier.weight(1f)) {
             items(state.messages) { msg ->
-                Text(msg, modifier = Modifier.padding(8.dp))
+                SelectionContainer { Text(msg, modifier = Modifier.padding(8.dp)) }
             }
         }
         Row(Modifier.padding(8.dp)) {
