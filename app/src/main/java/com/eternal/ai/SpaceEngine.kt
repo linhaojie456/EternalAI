@@ -3,32 +3,24 @@ package com.eternal.ai
 import kotlinx.coroutines.*
 import kotlin.math.*
 
-class SpaceEngine(private val onSpaceData: (String) -> Unit) {
+class SpaceEngine {
     private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
+    private var angle = 0.0
 
-    data class Point3D(val x: Float, val y: Float, val z: Float)
-
-    fun start() {
+    fun start(onData: (String) -> Unit) {
         scope.launch {
-            var angle = 0.0
             while (isActive) {
-                // 生成一个在单位球面上旋转的点
                 val x = cos(angle).toFloat()
                 val y = sin(angle).toFloat()
                 val z = sin(angle * 2).toFloat()
-                val point = Point3D(x, y, z)
-                val distance = sqrt(x*x + y*y + z*z)
-                val message = "[空间] 当前坐标 (${"%.2f".format(x)}, ${"%.2f".format(y)}, ${"%.2f".format(z)}) 距离原点 ${"%.2f".format(distance)}"
-                withContext(Dispatchers.Main) {
-                    onSpaceData(message)
-                }
+                val dist = sqrt(x*x + y*y + z*z)
+                val msg = "[空间] 坐标 (${"%.2f".format(x)}, ${"%.2f".format(y)}, ${"%.2f".format(z)}) 距离 ${"%.2f".format(dist)}"
+                withContext(Dispatchers.Main) { onData(msg) }
                 angle += 0.1
-                delay(2000) // 每 2 秒更新
+                delay(2000)
             }
         }
     }
 
-    fun stop() {
-        scope.cancel()
-    }
+    fun stop() { scope.cancel() }
 }

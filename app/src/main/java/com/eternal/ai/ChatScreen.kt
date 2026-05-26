@@ -14,13 +14,15 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 fun ChatScreen(chatVM: ChatViewModel = viewModel()) {
     val state by chatVM.state.collectAsState()
     Column(Modifier.fillMaxSize()) {
-        // 顶部显示时间和空间信息
-        Row(Modifier.padding(8.dp)) {
-            if (state.currentTime.isNotEmpty()) {
-                Text("[时间] ${state.currentTime}", modifier = Modifier.weight(1f))
+        Row(Modifier.padding(4.dp)) {
+            if (state.timeDisplay.isNotEmpty()) {
+                Text("[时间] ${state.timeDisplay}", modifier = Modifier.weight(1f))
             }
-            if (state.spaceData.isNotEmpty()) {
-                Text("[空间] ${state.spaceData}", modifier = Modifier.weight(1f))
+            if (state.spaceDisplay.isNotEmpty()) {
+                Text("[空间] ${state.spaceDisplay}", modifier = Modifier.weight(1f))
+            }
+            if (state.causalityDisplay.isNotEmpty()) {
+                Text("[因果] ${state.causalityDisplay}", modifier = Modifier.weight(1f))
             }
         }
         Divider()

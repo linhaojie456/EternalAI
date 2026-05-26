@@ -1,4 +1,5 @@
 package com.eternal.ai
+
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -12,7 +13,8 @@ data class ChatState(
     val messages: List<String> = listOf("你好，我是永恒。"),
     val timeDisplay: String = "",
     val spaceDisplay: String = "",
-    val causalityDisplay: String = ""
+    val causalityDisplay: String = "",
+    val selfRefDisplay: String = ""
 )
 
 class ChatViewModel(application: Application) : AndroidViewModel(application) {
@@ -27,6 +29,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 "time" -> _state.value = _state.value.copy(timeDisplay = data)
                 "space" -> _state.value = _state.value.copy(spaceDisplay = data)
                 "causality" -> _state.value = _state.value.copy(causalityDisplay = data)
+                "selfref" -> _state.value = _state.value.copy(selfRefDisplay = data)
                 "proactive" -> _state.value = _state.value.copy(messages = _state.value.messages + "永恒: $data")
             }
         }

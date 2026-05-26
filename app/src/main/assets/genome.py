@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 
 class EternalModel(nn.Module):
-    def __init__(self, vocab_size=152064, embed_dim=1536, heads=12):
+    def __init__(self, vocab_size=32000, embed_dim=256, heads=4):
         super().__init__()
         self.embed = nn.Embedding(vocab_size, embed_dim)
         self.layer = nn.TransformerEncoderLayer(d_model=embed_dim, nhead=heads, batch_first=True)
