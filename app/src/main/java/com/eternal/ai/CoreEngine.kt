@@ -3,19 +3,14 @@ package com.eternal.ai
 import android.content.Context
 
 class CoreEngine(private val context: Context) {
-    // 五大核心引擎
-    val inference = InferenceProxy()
-    val evolution = EvolutionProxy()
-    val proactive = ProactiveEngine()
     val time = TimeEngine()
     val space = SpaceEngine()
-
-    // 五大辅助引擎
     val causality = CausalityEngine()
     val selfRef = SelfReferenceEngine()
     val security = SecurityEngine()
     val network = NetworkEngine()
     val split = SplitEngine()
+    val proactive = ProactiveEngine()
 
     fun startAll(onUpdate: (String, String) -> Unit) {
         time.start { onUpdate("time", it) }
@@ -39,6 +34,3 @@ class CoreEngine(private val context: Context) {
         proactive.stop()
     }
 }
-
-class InferenceProxy
-class EvolutionProxy

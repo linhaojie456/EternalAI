@@ -18,9 +18,7 @@ class ProactiveEngine {
                     "[主动] 坐标已更新，空间感知正常。",
                     "[主动] 自进化引擎正在后台优化基因组。"
                 )
-                withContext(Dispatchers.Main) {
-                    onMessage(messages.random())
-                }
+                withContext(Dispatchers.Main) { onMessage(messages.random()) }
                 delay(60000)
             }
         }

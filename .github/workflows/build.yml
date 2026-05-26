@@ -15,20 +15,33 @@ jobs:
         with: {python-version: '3.10'}
       - name: Create model directory
         run: mkdir -p app/src/main/assets/model
-      - name: Download Qwen2.5-0.5B-Instruct ONNX model
+      - name: Download and convert Qwen2.5-0.5B to ONNX
         working-directory: app/src/main/assets/model
         run: |
-          pip install -q huggingface_hub
-          # 直接下载三个文件
-          hf download onnx-community/Qwen2.5-0.5B-Instruct \
-            model.onnx tokenizer.json tokenizer_config.json \
-            --local-dir .
-          # 验证文件大小
-          if [ ! -s model.onnx ]; then echo "ERROR: model.onnx is empty"; exit 1; fi
-          if [ ! -s tokenizer.json ]; then echo "ERROR: tokenizer.json is empty"; exit 1; fi
-          echo "=== Model files downloaded ==="
-          ls -lh model.onnx tokenizer.json
-          echo "==============================="
+          pip install huggingface_hub optimum onnx onnxruntime
+          python3 << 'PYEOF'
+          from optimum.onnxruntime import ORTModelForCausalLM
+          from transformers import AutoTokenizer
+          import shutil, os
+
+          model_id = "Qwen/Qwen2.5-0.5B-Instruct"
+          print(f"Downloading {model_id} and exporting to ONNX...")
+          # 导出 ONNX 模型，quantization 可选，这里使用默认 float32
+          model = ORTModelForCausalLM.from_pretrained(model_id, export=True)
+          tokenizer = AutoTokenizer.from_pretrained(model_id)
+
+          # 保存到当前目录
+          model.save_pretrained(".")
+          tokenizer.save_pretrained(".")
+
+          # 确认文件存在且大小 > 0
+          for fname in ["model.onnx", "tokenizer.json"]:
+              size = os.path.getsize(fname)
+              print(f"{fname}: {size:,} bytes")
+              if size < 10000:
+                  raise Exception(f"{fname} is too small, something went wrong")
+          print("ONNX model exported successfully.")
+          PYEOF
       - name: Inject onnxruntime native lib
         run: |
           wget -q https://repo1.maven.org/maven2/com/microsoft/onnxruntime/onnxruntime-android/1.21.1/onnxruntime-android-1.21.1.aar
