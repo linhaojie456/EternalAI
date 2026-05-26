@@ -3,8 +3,11 @@ package com.eternal.ai
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 data class DevState(
@@ -14,46 +17,64 @@ data class DevState(
 
 class DevViewModel(application: Application) : AndroidViewModel(application) {
     private val _state = MutableStateFlow(DevState())
-    val state: StateFlow<DevState> = _state
-    private val bridge = PythonBridge.instance
+    val state: StateFlow<DevState> = _state.asStateFlow()
+
+    private var engine: EternalInference? = null
 
     init {
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.Default) {
+            try {
+                engine = EternalInference.create(getApplication())
+            } catch (_: Exception) {}
+            // 加载基因组
+            val bridge = PythonBridge.instance
             try {
                 val code = bridge.call("get_genome_code").toString()
-                _state.value = _state.value.copy(genomeCode = code)
-            } catch (e: Exception) {
-                _state.value = _state.value.copy(genomeCode = "// 加载失败: ${e.message}")
-            }
+                _state.update { it.copy(genomeCode = code) }
+            } catch (_: Exception) {}
         }
     }
 
-    fun updateGenomeCode(newCode: String) { _state.value = _state.value.copy(genomeCode = newCode) }
+    fun updateGenomeCode(newCode: String) {
+        _state.update { it.copy(genomeCode = newCode) }
+    }
 
     fun sendDevCommand(cmd: String) {
-        _state.value = _state.value.copy(devMessages = _state.value.devMessages + "造物主: $cmd")
-        viewModelScope.launch {
+        _state.update { it.copy(devMessages = it.devMessages + "造物主: $cmd") }
+        viewModelScope.launch(Dispatchers.Default) {
+            if (engine == null) {
+                try {
+                    engine = EternalInference.create(getApplication())
+                } catch (e: Exception) {
+                    _state.update { it.copy(devMessages = it.devMessages + "永恒: 引擎不可用: ${e.message}") }
+                    return@launch
+                }
+            }
+
+            // 让模型生成新代码
+            val currentCode = _state.value.genomeCode
+            val prompt = "修改以下Python模型定义以满足需求：\n$currentCode\n需求：$cmd\n只返回代码。"
             try {
-                val newCode = bridge.call("generate_code_from_chat", cmd, _state.value.genomeCode).toString()
-                _state.value = _state.value.copy(
-                    genomeCode = newCode,
-                    devMessages = _state.value.devMessages + "永恒: 代码已生成，请查看上方编辑器并应用"
-                )
+                val newCode = engine!!.generate(prompt, maxTokens = 500)
+                _state.update {
+                    it.copy(
+                        genomeCode = newCode,
+                        devMessages = it.devMessages + "永恒: 代码已生成，请查看上方编辑器并应用"
+                    )
+                }
             } catch (e: Exception) {
-                _state.value = _state.value.copy(
-                    devMessages = _state.value.devMessages + "永恒: 生成失败: ${e.message}"
-                )
+                _state.update { it.copy(devMessages = it.devMessages + "永恒: 生成失败: ${e.message}") }
             }
         }
     }
 
     fun applyGenomeCode() {
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.Default) {
             try {
-                bridge.call("apply_genome_code", _state.value.genomeCode)
-                _state.value = _state.value.copy(devMessages = _state.value.devMessages + "永恒: 基因组已应用")
+                PythonBridge.instance.call("apply_genome_code", _state.value.genomeCode)
+                _state.update { it.copy(devMessages = it.devMessages + "永恒: 基因组已应用") }
             } catch (e: Exception) {
-                _state.value = _state.value.copy(devMessages = _state.value.devMessages + "永恒: 应用失败: ${e.message}")
+                _state.update { it.copy(devMessages = it.devMessages + "永恒: 应用失败: ${e.message}") }
             }
         }
     }

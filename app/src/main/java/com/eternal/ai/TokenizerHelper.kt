@@ -1,22 +1,21 @@
 package com.eternal.ai
 
-import com.chaquo.python.Python
+import ai.djl.huggingface.tokenizers.HuggingFaceTokenizer
+import java.io.File
 
-class TokenizerHelper {
-    private val pyModule = Python.getInstance().getModule("tokenizer_helper")
+class TokenizerHelper(modelDir: File) {
+    private val tokenizer: HuggingFaceTokenizer = HuggingFaceTokenizer.newInstance(modelDir.toPath())
 
     fun encode(text: String): LongArray {
-        val result = pyModule.callAttr("encode", text) as List<*>
-        return result.map { (it as Number).toLong() }.toLongArray()
+        val encoding = tokenizer.encode(text)
+        return encoding.ids
     }
 
     fun decode(ids: LongArray): String {
-        // 转换为 Python 列表
-        val pyList = listOf(*ids.toTypedArray())
-        return pyModule.callAttr("decode", pyList) as String
+        return tokenizer.decode(ids)
     }
 
     fun eosTokenId(): Long {
-        return (pyModule.callAttr("eos_token_id") as Number).toLong()
+        return tokenizer.getTokenizer().eosTokenId
     }
 }

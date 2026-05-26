@@ -3,9 +3,6 @@ package com.eternal.ai
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.eternal.ai.data.ChatDao
-import com.eternal.ai.data.ChatDatabase
-import com.eternal.ai.data.ChatMessage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -18,32 +15,39 @@ data class ChatState(val messages: List<String> = listOf("你好，我是永恒�
 class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private val _state = MutableStateFlow(ChatState())
     val state: StateFlow<ChatState> = _state.asStateFlow()
-    private val chatDao: ChatDao = ChatDatabase.getDatabase(application).chatDao()
+
+    private var engine: EternalInference? = null
 
     init {
-        viewModelScope.launch(Dispatchers.IO) {
-            chatDao.getAllMessages().collect { dbMessages ->
-                if (dbMessages.isNotEmpty()) {
-                    _state.update { ChatState(messages = dbMessages.map { "${it.sender}: ${it.content}" }) }
-                }
+        // 后台初始化引擎
+        viewModelScope.launch(Dispatchers.Default) {
+            try {
+                engine = EternalInference.create(getApplication())
+            } catch (e: Exception) {
+                // 引擎初始化失败会在第一次发消息时报告
             }
         }
     }
 
     fun sendMessage(text: String) {
-        viewModelScope.launch {
-            chatDao.insertMessage(ChatMessage(sender = "造物主", content = text))
-            _state.update { it.copy(messages = it.messages + "造物主: $text") }
+        _state.update { it.copy(messages = it.messages + "造物主: $text") }
+
+        viewModelScope.launch(Dispatchers.Default) {
+            if (engine == null) {
+                // 尝试重新初始化
+                try {
+                    engine = EternalInference.create(getApplication())
+                } catch (e: Exception) {
+                    _state.update { it.copy(messages = it.messages + "永恒: 引擎初始化失败: ${e.message}") }
+                    return@launch
+                }
+            }
 
             try {
-                val engine = EternalInference.create(getApplication())
-                val reply = engine.generate(text)
-                chatDao.insertMessage(ChatMessage(sender = "永恒", content = reply))
+                val reply = engine!!.generate(text)
                 _state.update { it.copy(messages = it.messages + "永恒: $reply") }
             } catch (e: Exception) {
-                val errorMsg = "引擎启动失败: ${e.message}"
-                chatDao.insertMessage(ChatMessage(sender = "永恒", content = errorMsg))
-                _state.update { it.copy(messages = it.messages + "永恒: $errorMsg") }
+                _state.update { it.copy(messages = it.messages + "永恒: 回复生成失败: ${e.message}") }
             }
         }
     }

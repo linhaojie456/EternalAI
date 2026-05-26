@@ -29,7 +29,7 @@ jobs:
       - name: Create model directory
         run: mkdir -p app/src/main/assets/model
 
-      - name: Download DeepSeek ONNX model
+      - name: Download DeepSeek ONNX model and verify
         working-directory: app/src/main/assets/model
         run: |
           pip install -q huggingface_hub
@@ -38,6 +38,11 @@ jobs:
             --local-dir .
           mv onnx/model_quantized.onnx model.onnx
           rm -rf onnx
+          # 验证文件大小和存在性
+          ls -lh model.onnx tokenizer.json tokenizer_config.json
+          if [ ! -s model.onnx ]; then echo "Error: model.onnx is empty"; exit 1; fi
+          if [ ! -s tokenizer.json ]; then echo "Error: tokenizer.json is empty"; exit 1; fi
+          if [ ! -s tokenizer_config.json ]; then echo "Error: tokenizer_config.json is empty"; exit 1; fi
 
       - name: Generate Gradle Wrapper
         run: gradle wrapper --gradle-version 8.9
@@ -49,7 +54,6 @@ jobs:
               id("com.android.application") version "8.5.2" apply false
               id("org.jetbrains.kotlin.android") version "1.9.22" apply false
               id("com.chaquo.python") version "15.0.1" apply false
-              id("org.jetbrains.kotlin.kapt") version "1.9.22" apply false
           }
           INNER_EOF
 
