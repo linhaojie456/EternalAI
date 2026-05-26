@@ -27,10 +27,8 @@ android {
 chaquopy {
     defaultConfig {
         pip {
-            install("numpy")
-            install("onnxruntime")
-            install("transformers")
-            install("tokenizers")
+            install("numpy")          // numpy 在 Chaquopy 里是可用的
+            install("tokenizers")     // 我们将用 Chaquopy 做 tokenizer
         }
     }
 }
@@ -41,4 +39,6 @@ dependencies {
     implementation("androidx.compose.ui:ui:1.5.0")
     implementation("androidx.compose.material3:material3:1.1.0")
     implementation("androidx.activity:activity-compose:1.7.2")
+    // ONNX Runtime for Android (原生)
+    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.18.0")
 }
