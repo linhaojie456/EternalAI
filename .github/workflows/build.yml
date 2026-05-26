@@ -15,32 +15,42 @@ jobs:
         with: {python-version: '3.10'}
       - name: Create model directory
         run: mkdir -p app/src/main/assets/model
-      - name: Download and convert Qwen2.5-0.5B to ONNX
+      - name: Download Qwen2.5-0.5B ONNX model (resilient)
         working-directory: app/src/main/assets/model
         run: |
-          pip install huggingface_hub optimum onnx onnxruntime
+          pip install -q huggingface_hub
           python3 << 'PYEOF'
-          from optimum.onnxruntime import ORTModelForCausalLM
-          from transformers import AutoTokenizer
-          import shutil, os
+          from huggingface_hub import hf_hub_download
+          import os, time, sys
 
-          model_id = "Qwen/Qwen2.5-0.5B-Instruct"
-          print(f"Downloading {model_id} and exporting to ONNX...")
-          # 导出 ONNX 模型，quantization 可选，这里使用默认 float32
-          model = ORTModelForCausalLM.from_pretrained(model_id, export=True)
-          tokenizer = AutoTokenizer.from_pretrained(model_id)
+          repo = "onnx-community/Qwen2.5-0.5B-Instruct"
+          files_needed = {
+              "model.onnx": 500_000_000,   # 至少 500MB
+              "tokenizer.json": 1_000_000,
+              "tokenizer_config.json": 100
+          }
 
-          # 保存到当前目录
-          model.save_pretrained(".")
-          tokenizer.save_pretrained(".")
-
-          # 确认文件存在且大小 > 0
-          for fname in ["model.onnx", "tokenizer.json"]:
-              size = os.path.getsize(fname)
-              print(f"{fname}: {size:,} bytes")
-              if size < 10000:
-                  raise Exception(f"{fname} is too small, something went wrong")
-          print("ONNX model exported successfully.")
+          for fname, min_size in files_needed.items():
+              success = False
+              for attempt in range(3):
+                  try:
+                      print(f"Downloading {fname} (attempt {attempt+1})...")
+                      path = hf_hub_download(repo, fname, local_dir=".", resume=True)
+                      size = os.path.getsize(path)
+                      if size >= min_size:
+                          print(f"  ✓ {fname}: {size:,} bytes")
+                          success = True
+                          break
+                      else:
+                          print(f"  ⚠ {fname} size {size:,} < {min_size:,}, retrying...")
+                          os.remove(path)
+                  except Exception as e:
+                      print(f"  ✗ Error: {e}")
+                  time.sleep(2)
+              if not success:
+                  print(f"Failed to download {fname}")
+                  sys.exit(1)
+          print("All model files downloaded successfully.")
           PYEOF
       - name: Inject onnxruntime native lib
         run: |

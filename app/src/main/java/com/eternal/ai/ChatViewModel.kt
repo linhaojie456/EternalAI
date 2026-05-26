@@ -13,11 +13,13 @@ data class ChatState(
     val messages: List<String> = listOf("你好，我是永恒。"),
     val timeDisplay: String = "",
     val spaceDisplay: String = "",
+    val emotionDisplay: String = "",
     val causalityDisplay: String = "",
     val selfRefDisplay: String = "",
     val securityDisplay: String = "",
     val networkDisplay: String = "",
-    val splitDisplay: String = ""
+    val splitDisplay: String = "",
+    val soulDisplay: String = ""
 )
 
 class ChatViewModel(application: Application) : AndroidViewModel(application) {
@@ -31,11 +33,13 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             when (type) {
                 "time" -> _state.value = _state.value.copy(timeDisplay = data)
                 "space" -> _state.value = _state.value.copy(spaceDisplay = data)
+                "emotion" -> _state.value = _state.value.copy(emotionDisplay = data)
                 "causality" -> _state.value = _state.value.copy(causalityDisplay = data)
                 "selfref" -> _state.value = _state.value.copy(selfRefDisplay = data)
                 "security" -> _state.value = _state.value.copy(securityDisplay = data)
                 "network" -> _state.value = _state.value.copy(networkDisplay = data)
                 "split" -> _state.value = _state.value.copy(splitDisplay = data)
+                "soul" -> _state.value = _state.value.copy(soulDisplay = data)
                 "proactive" -> _state.value = _state.value.copy(messages = _state.value.messages + "永恒: $data")
             }
         }
