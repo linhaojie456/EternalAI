@@ -17,6 +17,8 @@ jobs:
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: 8.9
 
       - name: Create model directory
         run: mkdir -p app/src/main/assets/model
@@ -30,6 +32,15 @@ jobs:
             --local-dir .
           mv onnx/model_quantized.onnx model.onnx
           rm -rf onnx
+
+      - name: Generate Gradle Wrapper
+        run: gradle wrapper --gradle-version 8.9
+
+      - name: Fix AGP version compatibility
+        run: |
+          sed -i 's/id("com.android.application") version "8.2.0"/id("com.android.application") version "8.7.3"/' build.gradle.kts
+          sed -i 's/id("org.jetbrains.kotlin.android") version "1.9.20"/id("org.jetbrains.kotlin.android") version "1.9.22"/' build.gradle.kts
+          sed -i 's/compileSdk = 33/compileSdk = 34/' app/build.gradle.kts
 
       - name: Build debug APK
         run: ./gradlew assembleDebug
