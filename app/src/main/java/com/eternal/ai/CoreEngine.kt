@@ -3,15 +3,12 @@ package com.eternal.ai
 import android.content.Context
 
 class CoreEngine(private val context: Context) {
-    // 六大核心引擎
-    val inference = InferenceProxy()
-    val evolution = EvolutionProxy()
+    val inference = InferenceEngine()
+    val evolution = EvolutionEngine()
     val proactive = ProactiveEngine()
     val time = TimeEngine()
     val space = SpaceEngine()
     val emotion = EmotionEngine()
-
-    // 六大辅助引擎
     val causality = CausalityEngine()
     val selfRef = SelfReferenceEngine()
     val security = SecurityEngine()
@@ -30,6 +27,8 @@ class CoreEngine(private val context: Context) {
         split.start { onUpdate("split", it) }
         soul.start { onUpdate("soul", it) }
         proactive.start(context) { onUpdate("proactive", it) }
+        inference.start { onUpdate("inference", it) }
+        evolution.start { onUpdate("evolution", it) }
     }
 
     fun stopAll() {
@@ -43,8 +42,7 @@ class CoreEngine(private val context: Context) {
         split.stop()
         soul.stop()
         proactive.stop()
+        inference.stop()
+        evolution.stop()
     }
 }
-
-class InferenceProxy
-class EvolutionProxy

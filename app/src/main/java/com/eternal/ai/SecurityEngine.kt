@@ -5,6 +5,7 @@ import kotlinx.coroutines.*
 import java.io.File
 
 class SecurityEngine {
+    val goal = "主宰风险"
     private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
     private var previousGenome: String = ""
     private var appContext: Context? = null
@@ -23,9 +24,9 @@ class SecurityEngine {
                     } else {
                         "基因组文件不存在"
                     }
-                    onStatus("[安全] 语法检查: $checkResult")
+                    onStatus("[安全] 目标：$goal | 语法检查：$checkResult")
                 } catch (e: Exception) {
-                    onStatus("[安全] 检查失败，已回滚")
+                    onStatus("[安全] 目标：$goal | 检查失败，已回滚")
                     if (previousGenome.isNotEmpty() && appContext != null) {
                         File(appContext!!.filesDir, "genome.py").writeText(previousGenome)
                     }

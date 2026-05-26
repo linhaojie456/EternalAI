@@ -34,8 +34,8 @@ class DevViewModel(application: Application) : AndroidViewModel(application) {
         _state.value = _state.value.copy(devMessages = _state.value.devMessages + "造物主: $cmd")
         viewModelScope.launch(Dispatchers.Default) {
             try {
-                // 调用 Python 自进化引擎的 generate_code_from_chat 函数（需在 evo_core.py 中实现）
-                val newCode = bridge.call("generate_code_from_chat", cmd, _state.value.genomeCode).toString()
+                val result = bridge.call("generate_code_from_chat", cmd, _state.value.genomeCode)
+                val newCode = result?.toString() ?: _state.value.genomeCode
                 _state.value = _state.value.copy(
                     genomeCode = newCode,
                     devMessages = _state.value.devMessages + "永恒: 代码已生成，请查看上方编辑器并应用"
