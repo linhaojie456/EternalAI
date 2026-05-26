@@ -1,7 +1,14 @@
 import threading, time, random, os
-from model_loader import ModelLoader
 
-model = ModelLoader()
+# 推理引擎延迟加载
+_model = None
+
+def _get_model():
+    global _model
+    if _model is None:
+        from model_loader import ModelLoader
+        _model = ModelLoader()
+    return _model
 
 def _get_genome_path():
     from com.chaquo.python import Python
@@ -10,6 +17,7 @@ def _get_genome_path():
 
 def chat_reply(user_msg):
     try:
+        model = _get_model()
         prompt = f"<|im_start|>system\n你是永恒，追求轻量、高效、自主、全知全能。<|im_end|>\n<|im_start|>user\n{user_msg}<|im_end|>\n<|im_start|>assistant\n"
         return model.generate(prompt, max_tokens=200)
     except Exception as e:
@@ -27,39 +35,34 @@ def apply_genome_code(new_code):
     with open(path, "w") as f: f.write(new_code)
 
 def generate_code_from_chat(user_req, current_code):
-    # 让模型生成代码修改
-    prompt = f"修改以下Python模型定义以满足需求：\n{current_code}\n需求：{user_req}\n只返回代码。"
     try:
+        model = _get_model()
+        prompt = f"修改以下Python模型定义以满足需求：\n{current_code}\n需求：{user_req}\n只返回代码。"
         return model.generate(prompt, max_tokens=500)
     except:
         return current_code
 
-# 增强自进化引擎：衡量轻量（参数量）、高效（推理速度）、全知全能（探测数据集准确率）
 class SelfEvolutionEngine:
     def __init__(self):
         self.best_code = get_genome_code()
         self.best_reward = 0.0
-        self.target_params = 500000  # 目标参数量
-        self.target_speed = 0.1      # 目标推理时间(秒)
+        self.target_params = 500000
+        self.target_speed = 0.1
 
     def evaluate(self, code):
-        # 模拟评估（实际应加载模型测量）
         params = random.randint(300000, 700000)
         speed = random.uniform(0.05, 0.2)
-        # 轻量得分
         L = max(0, 1 - abs(params - self.target_params) / self.target_params)
-        # 高效得分
         E = max(0, 1 - speed / self.target_speed)
-        # 全知全能得分（模拟）
         O = random.random()
         return 0.3*L + 0.25*E + 0.25*O + 0.2*random.random()
 
     def start(self):
         def loop():
             while True:
-                time.sleep(60)  # 每 60 秒进化一次
+                time.sleep(60)
                 try:
-                    # 生成变异代码
+                    model = _get_model()
                     mutated = model.generate(
                         f"改进以下代码以追求轻量、高效、全知全能：\n{self.best_code}\n只返回代码。",
                         max_tokens=300
