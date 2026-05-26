@@ -27,7 +27,7 @@ jobs:
           pip install -q huggingface_hub
           hf download onnx-community/DeepSeek-R1-Distill-Qwen-1.5B-ONNX \
             --include "model_quantized.onnx" "tokenizer.json" "tokenizer_config.json" \
-            --local-dir . --local-dir-use-symlinks False
+            --local-dir .
           mv model_quantized.onnx model.onnx
 
       - name: Build debug APK
