@@ -8,17 +8,9 @@ import java.io.File
 import java.io.FileOutputStream
 
 class MainApplication : Application() {
-
-    companion object {
-        lateinit var instance: MainApplication
-            private set
-    }
-
     override fun onCreate() {
         super.onCreate()
-        instance = this
 
-        // 注册全局异常捕获
         val defaultHandler = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { thread, e ->
             try {
@@ -32,16 +24,13 @@ class MainApplication : Application() {
             Python.start(AndroidPlatform(this))
         }
 
-        // 复制模型文件
         try {
             val modelDir = File(filesDir, "model")
             if (!modelDir.exists()) {
                 modelDir.mkdirs()
                 copyAssets("model", modelDir)
             }
-        } catch (e: Exception) {
-            // 忽略
-        }
+        } catch (_: Exception) {}
     }
 
     private fun copyAssets(assetPath: String, destDir: File) {
@@ -55,9 +44,7 @@ class MainApplication : Application() {
                     inStream.copyTo(out)
                 }
                 inStream.close()
-            } catch (e: Exception) {}
+            } catch (_: Exception) {}
         }
     }
 }
-
-fun MyApplication.getInstance(): MainApplication = MainApplication.instance
