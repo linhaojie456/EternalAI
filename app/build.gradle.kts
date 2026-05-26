@@ -2,6 +2,7 @@ plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("com.chaquo.python")
+    id("kotlin-kapt") // 用于 Room 数据库
 }
 android {
     namespace = "com.eternal.ai"
@@ -39,5 +40,12 @@ dependencies {
     implementation("androidx.compose.ui:ui:1.5.0")
     implementation("androidx.compose.material3:material3:1.1.0")
     implementation("androidx.activity:activity-compose:1.7.2")
-    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.17.1")
+
+    // 升级 ONNX Runtime 到 1.21.1，以支持 IR v10 模型
+    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.21.1")
+
+    // Room 数据库相关
+    implementation("androidx.room:room-runtime:2.6.1")
+    implementation("androidx.room:room-ktx:2.6.1")
+    kapt("androidx.room:room-compiler:2.6.1")
 }
