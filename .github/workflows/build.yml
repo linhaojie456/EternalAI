@@ -48,8 +48,10 @@ jobs:
           sed -i '/buildPython/d' app/build.gradle.kts
           sed -i '/pythonVersion/d' app/build.gradle.kts
 
-      - name: Build debug APK
-        run: ./gradlew assembleDebug
+      - name: Build debug APK (with increased heap)
+        run: ./gradlew assembleDebug -Dorg.gradle.jvmargs="-Xmx3g"
+        env:
+          GRADLE_OPTS: "-Xmx3g"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
