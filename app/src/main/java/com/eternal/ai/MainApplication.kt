@@ -11,7 +11,13 @@ class MainApplication : Application() {
     override fun onCreate() {
         super.onCreate()
 
-        // 全局异常捕获
+        // 加载 ONNX Runtime 原生库
+        try {
+            System.loadLibrary("onnxruntime")
+        } catch (e: UnsatisfiedLinkError) {
+            // 记录错误但继续
+        }
+
         val defaultHandler = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { thread, e ->
             try {
@@ -25,15 +31,13 @@ class MainApplication : Application() {
             Python.start(AndroidPlatform(this))
         }
 
-        // 复制模型和 genome.py 到 filesDir
+        // 复制模型和 genome.py
         try {
-            // 复制模型
             val modelDir = File(filesDir, "model")
             if (!modelDir.exists()) {
                 modelDir.mkdirs()
                 copyAssets("model", modelDir)
             }
-            // 复制 genome.py 到 filesDir 根目录
             val genomeFile = File(filesDir, "genome.py")
             if (!genomeFile.exists()) {
                 val inputStream = assets.open("genome.py")
