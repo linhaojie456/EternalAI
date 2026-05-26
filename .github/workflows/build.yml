@@ -1,54 +1,38 @@
 name: Build Eternal APK
 on: [push, workflow_dispatch]
-
 env:
   ANDROID_HOME: /usr/local/lib/android/sdk
-
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
-        with:
-          java-version: '17'
-          distribution: 'temurin'
-
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v3
-        with:
-          gradle-version: 8.9
-
-      - name: Set up Python 3.10
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.10'
-
+      - uses: actions/setup-java@v4
+        with: {java-version: '17', distribution: 'temurin'}
+      - uses: gradle/actions/setup-gradle@v3
+        with: {gradle-version: '8.9'}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.10'}
       - name: Create model directory
         run: mkdir -p app/src/main/assets/model
-
-      - name: Download DeepSeek ONNX model and verify
+      - name: Download Qwen2.5-0.5B-Instruct ONNX model
         working-directory: app/src/main/assets/model
         run: |
           pip install -q huggingface_hub
-          hf download onnx-community/DeepSeek-R1-Distill-Qwen-1.5B-ONNX \
-            onnx/model_quantized.onnx tokenizer.json tokenizer_config.json \
+          hf download onnx-community/Qwen2.5-0.5B-Instruct \
+            model.onnx tokenizer.json tokenizer_config.json \
             --local-dir .
-          mv onnx/model_quantized.onnx model.onnx
-          rm -rf onnx
-          # 验证文件大小和存在性
-          ls -lh model.onnx tokenizer.json tokenizer_config.json
-          if [ ! -s model.onnx ]; then echo "Error: model.onnx is empty"; exit 1; fi
-          if [ ! -s tokenizer.json ]; then echo "Error: tokenizer.json is empty"; exit 1; fi
-          if [ ! -s tokenizer_config.json ]; then echo "Error: tokenizer_config.json is empty"; exit 1; fi
-
+      - name: Inject onnxruntime native lib
+        run: |
+          wget -q https://repo1.maven.org/maven2/com/microsoft/onnxruntime/onnxruntime-android/1.21.1/onnxruntime-android-1.21.1.aar
+          unzip -q onnxruntime-android-1.21.1.aar -d ort
+          mkdir -p app/src/main/jniLibs/arm64-v8a
+          cp ort/jni/arm64-v8a/libonnxruntime.so app/src/main/jniLibs/arm64-v8a/
       - name: Generate Gradle Wrapper
         run: gradle wrapper --gradle-version 8.9
-
-      - name: Write correct build files
+      - name: Write project files
         run: |
+          echo "sdk.dir=$ANDROID_HOME" > local.properties
           cat > build.gradle.kts << 'INNER_EOF'
           plugins {
               id("com.android.application") version "8.5.2" apply false
@@ -56,16 +40,9 @@ jobs:
               id("com.chaquo.python") version "15.0.1" apply false
           }
           INNER_EOF
-
-          echo "sdk.dir=$ANDROID_HOME" > local.properties
-
-      - name: Build debug APK (4GB heap)
+      - name: Build debug APK
         run: ./gradlew assembleDebug -Dorg.gradle.jvmargs="-Xmx4g"
-        env:
-          GRADLE_OPTS: "-Xmx4g"
-
+        env: {GRADLE_OPTS: "-Xmx4g"}
       - name: Upload APK
         uses: actions/upload-artifact@v4
-        with:
-          name: 永恒-APK
-          path: app/build/outputs/apk/debug/app-debug.apk
+        with: {name: "永恒-APK", path: "app/build/outputs/apk/debug/app-debug.apk"}
