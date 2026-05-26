@@ -15,40 +15,38 @@ jobs:
         with: {python-version: '3.10'}
       - name: Create model directory
         run: mkdir -p app/src/main/assets/model
-      - name: Download Qwen2.5-0.5B ONNX model (fixed)
+      - name: Download SmolLM2 ONNX model (Reliable)
         working-directory: app/src/main/assets/model
         run: |
           pip install -q huggingface_hub
           python3 << 'PYEOF'
-          from huggingface_hub import hf_hub_download
-          import os, sys, time
+          from huggingface_hub import snapshot_download
+          import os, sys
 
-          repo = "onnx-community/Qwen2.5-0.5B-Instruct"
-          files = [
-              ("model.onnx", 500_000_000),
-              ("tokenizer.json", 1_000_000),
-              ("tokenizer_config.json", 100)
-          ]
+          # 使用确认存在的 ONNX 模型仓库
+          repo_id = "HuggingFaceTB/SmolLM2-0.2B-Instruct"
 
-          for fname, min_size in files:
-              for attempt in range(3):
-                  try:
-                      print(f"Downloading {fname} (attempt {attempt+1})...")
-                      path = hf_hub_download(repo, fname, local_dir=".", resume_download=True)
-                      size = os.path.getsize(path)
-                      if size >= min_size:
-                          print(f"  ✓ {fname}: {size:,} bytes")
-                          break
-                      else:
-                          print(f"  ⚠ {fname} size {size:,} < {min_size:,}, retrying...")
-                          os.remove(path)
-                  except Exception as e:
-                      print(f"  ✗ Error: {e}")
-                  time.sleep(2)
-              else:
-                  print(f"Failed to download {fname}")
+          print(f"Downloading model from {repo_id}...")
+          # 只下载必要的 ONNX 和 Tokenizer 文件
+          snapshot_download(
+              repo_id=repo_id,
+              local_dir=".",
+              ignore_patterns=["*.safetensors", "*.bin", "*.msgpack", "*.h5"],
+              resume_download=True,
+          )
+
+          # 验证关键文件
+          required_files = ["model.onnx", "tokenizer.json", "tokenizer_config.json"]
+          for fname in required_files:
+              if not os.path.exists(fname):
+                  print(f"Error: {fname} not found after download")
                   sys.exit(1)
-          print("All model files downloaded successfully.")
+              size = os.path.getsize(fname)
+              if size < 1000:
+                  print(f"Error: {fname} is too small ({size} bytes)")
+                  sys.exit(1)
+              print(f"✓ {fname}: {size:,} bytes")
+          print("Model download and verification complete.")
           PYEOF
       - name: Inject onnxruntime native lib
         run: |
