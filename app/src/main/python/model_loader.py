@@ -2,17 +2,20 @@ import numpy as np
 import onnxruntime as ort
 from pathlib import Path
 from transformers import AutoTokenizer
-from java.io import File  # Chaquopy 可以导入 Java 类
-from android.os import Environment
+import os
 
 class ModelLoader:
     def __init__(self):
-        # 模型已复制到 filesDir/model，通过 context.getFilesDir() 获取
+        # 👇 优先从 filesDir 加载，如果不存在则尝试 assets 中的路径
         from com.chaquo.python import Python
         context = Python.getPlatform().getApplication()
-        model_dir = str(context.getFilesDir()) + "/model"
+        model_dir = os.path.join(str(context.getFilesDir()), "model")
+        if not os.path.exists(os.path.join(model_dir, "model.onnx")):
+            # 如果 filesDir 中没有，尝试从 assets 直接读取（备用方案）
+            model_dir = os.path.join(str(context.getApplicationInfo().sourceDir), "..", "assets", "model")
+        
         self.session = ort.InferenceSession(
-            f"{model_dir}/model.onnx",
+            os.path.join(model_dir, "model.onnx"),
             providers=['CPUExecutionProvider']
         )
         self.tokenizer = AutoTokenizer.from_pretrained(model_dir)
