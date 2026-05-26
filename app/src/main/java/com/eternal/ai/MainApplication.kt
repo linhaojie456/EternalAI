@@ -11,6 +11,7 @@ class MainApplication : Application() {
     override fun onCreate() {
         super.onCreate()
 
+        // 全局异常捕获
         val defaultHandler = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { thread, e ->
             try {
@@ -24,11 +25,22 @@ class MainApplication : Application() {
             Python.start(AndroidPlatform(this))
         }
 
+        // 复制模型和 genome.py 到 filesDir
         try {
+            // 复制模型
             val modelDir = File(filesDir, "model")
             if (!modelDir.exists()) {
                 modelDir.mkdirs()
                 copyAssets("model", modelDir)
+            }
+            // 复制 genome.py 到 filesDir 根目录
+            val genomeFile = File(filesDir, "genome.py")
+            if (!genomeFile.exists()) {
+                val inputStream = assets.open("genome.py")
+                FileOutputStream(genomeFile).use { out ->
+                    inputStream.copyTo(out)
+                }
+                inputStream.close()
             }
         } catch (_: Exception) {}
     }
