@@ -15,47 +15,50 @@ jobs:
         with: {python-version: '3.10'}
       - name: Create model directory
         run: mkdir -p app/src/main/assets/model
-      - name: Download SmolLM2 ONNX model (Reliable)
+
+      - name: Download & Convert DeepSeek to ONNX
         working-directory: app/src/main/assets/model
         run: |
-          pip install -q huggingface_hub
+          pip install -q transformers optimum onnx onnxruntime torch --extra-index-url https://download.pytorch.org/whl/cpu
           python3 << 'PYEOF'
-          from huggingface_hub import snapshot_download
-          import os, sys
+          from optimum.onnxruntime import ORTModelForCausalLM
+          from transformers import AutoTokenizer
+          import os, sys, shutil
 
-          # 使用确认存在的 ONNX 模型仓库
-          repo_id = "HuggingFaceTB/SmolLM2-0.2B-Instruct"
+          model_id = "deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B"
+          print(f"Downloading {model_id} and exporting to ONNX...")
+          model = ORTModelForCausalLM.from_pretrained(model_id, export=True)
+          tokenizer = AutoTokenizer.from_pretrained(model_id)
 
-          print(f"Downloading model from {repo_id}...")
-          # 只下载必要的 ONNX 和 Tokenizer 文件
-          snapshot_download(
-              repo_id=repo_id,
-              local_dir=".",
-              ignore_patterns=["*.safetensors", "*.bin", "*.msgpack", "*.h5"],
-              resume_download=True,
-          )
+          # 保存到当前目录
+          model.save_pretrained(".")
+          tokenizer.save_pretrained(".")
 
-          # 验证关键文件
-          required_files = ["model.onnx", "tokenizer.json", "tokenizer_config.json"]
-          for fname in required_files:
-              if not os.path.exists(fname):
-                  print(f"Error: {fname} not found after download")
-                  sys.exit(1)
+          # 验证文件完整性
+          files_to_check = {
+              "model.onnx": 500_000_000,   # 至少 500MB
+              "tokenizer.json": 1_000_000,
+              "tokenizer_config.json": 100
+          }
+          for fname, min_size in files_to_check.items():
               size = os.path.getsize(fname)
-              if size < 1000:
-                  print(f"Error: {fname} is too small ({size} bytes)")
+              if size < min_size:
+                  print(f"Error: {fname} is too small ({size:,} bytes)")
                   sys.exit(1)
               print(f"✓ {fname}: {size:,} bytes")
-          print("Model download and verification complete.")
+          print("ONNX export and verification complete.")
           PYEOF
+
       - name: Inject onnxruntime native lib
         run: |
           wget -q https://repo1.maven.org/maven2/com/microsoft/onnxruntime/onnxruntime-android/1.21.1/onnxruntime-android-1.21.1.aar
           unzip -q onnxruntime-android-1.21.1.aar -d ort
           mkdir -p app/src/main/jniLibs/arm64-v8a
           cp ort/jni/arm64-v8a/libonnxruntime.so app/src/main/jniLibs/arm64-v8a/
+
       - name: Generate Gradle Wrapper
         run: gradle wrapper --gradle-version 8.9
+
       - name: Write project files
         run: |
           echo "sdk.dir=$ANDROID_HOME" > local.properties
@@ -66,9 +69,11 @@ jobs:
               id("com.chaquo.python") version "15.0.1" apply false
           }
           INNER_EOF
+
       - name: Build debug APK
-        run: ./gradlew assembleDebug -Dorg.gradle.jvmargs="-Xmx4g"
-        env: {GRADLE_OPTS: "-Xmx4g"}
+        run: ./gradlew assembleDebug -Dorg.gradle.jvmargs="-Xmx6g"
+        env: {GRADLE_OPTS: "-Xmx6g"}
+
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with: {name: "永恒-APK", path: "app/build/outputs/apk/debug/app-debug.apk"}
