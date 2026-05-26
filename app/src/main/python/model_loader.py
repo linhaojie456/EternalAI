@@ -1,13 +1,38 @@
-from tokenizers import Tokenizer
+import numpy as np
+import onnxruntime as ort
 from pathlib import Path
+from transformers import AutoTokenizer
+from java.io import File  # Chaquopy 可以导入 Java 类
+from android.os import Environment
 
-class TokenizerLoader:
+class ModelLoader:
     def __init__(self):
-        model_dir = Path(__file__).parent.parent / "assets" / "model"
-        self.tokenizer = Tokenizer.from_file(str(model_dir / "tokenizer.json"))
+        # 模型已复制到 filesDir/model，通过 context.getFilesDir() 获取
+        from com.chaquo.python import Python
+        context = Python.getPlatform().getApplication()
+        model_dir = str(context.getFilesDir()) + "/model"
+        self.session = ort.InferenceSession(
+            f"{model_dir}/model.onnx",
+            providers=['CPUExecutionProvider']
+        )
+        self.tokenizer = AutoTokenizer.from_pretrained(model_dir)
 
-    def encode(self, text):
-        return self.tokenizer.encode(text).ids
+    def generate(self, prompt, max_tokens=256, temperature=0.7):
+        inputs = self.tokenizer(prompt, return_tensors="np")
+        input_ids = inputs["input_ids"]
+        attention_mask = inputs["attention_mask"]
 
-    def decode(self, ids):
-        return self.tokenizer.decode(ids)
+        for _ in range(max_tokens):
+            ort_inputs = {
+                "input_ids": input_ids.astype(np.int64),
+                "attention_mask": attention_mask.astype(np.int64)
+            }
+            logits = self.session.run(["logits"], ort_inputs)[0]
+            next_logits = logits[0, -1, :] / temperature
+            next_token = np.argmax(next_logits)
+            if next_token == self.tokenizer.eos_token_id:
+                break
+            input_ids = np.concatenate([input_ids, [[next_token]]], axis=1)
+            attention_mask = np.concatenate([attention_mask, [[1]]], axis=1)
+
+        return self.tokenizer.decode(input_ids[0], skip_special_tokens=True)
