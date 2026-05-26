@@ -16,37 +16,61 @@ jobs:
       - name: Create model directory
         run: mkdir -p app/src/main/assets/model
 
-      - name: Download & Convert DeepSeek to ONNX
+      - name: Download DeepSeek ONNX model (smart)
         working-directory: app/src/main/assets/model
         run: |
-          pip install -q transformers optimum onnx onnxruntime torch --extra-index-url https://download.pytorch.org/whl/cpu
+          pip install -q huggingface_hub
           python3 << 'PYEOF'
-          from optimum.onnxruntime import ORTModelForCausalLM
-          from transformers import AutoTokenizer
-          import os, sys, shutil
+          from huggingface_hub import list_repo_files, hf_hub_download
+          import os, sys
 
-          model_id = "deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B"
-          print(f"Downloading {model_id} and exporting to ONNX...")
-          model = ORTModelForCausalLM.from_pretrained(model_id, export=True)
-          tokenizer = AutoTokenizer.from_pretrained(model_id)
+          repo_id = "onnx-community/DeepSeek-R1-Distill-Qwen-1.5B-ONNX"
 
-          # 保存到当前目录
-          model.save_pretrained(".")
-          tokenizer.save_pretrained(".")
+          # 1. 列出仓库所有文件
+          print(f"Fetching file list from {repo_id}...")
+          try:
+              all_files = list_repo_files(repo_id)
+          except Exception as e:
+              print(f"Error listing files: {e}")
+              sys.exit(1)
 
-          # 验证文件完整性
-          files_to_check = {
-              "model.onnx": 500_000_000,   # 至少 500MB
-              "tokenizer.json": 1_000_000,
-              "tokenizer_config.json": 100
-          }
-          for fname, min_size in files_to_check.items():
-              size = os.path.getsize(fname)
-              if size < min_size:
-                  print(f"Error: {fname} is too small ({size:,} bytes)")
+          print("Files found:")
+          for f in all_files:
+              print(f"  {f}")
+
+          # 2. 找到模型文件（可能是 model.onnx 或 model_quantized.onnx）
+          model_files = [f for f in all_files if f.endswith(".onnx") and ("model" in f or "quant" in f)]
+          if not model_files:
+              print("No .onnx model file found in repository")
+              sys.exit(1)
+          # 优先选择量化模型
+          preferred = [f for f in model_files if "quant" in f.lower()]
+          model_file = preferred[0] if preferred else model_files[0]
+          print(f"Selected model file: {model_file}")
+
+          # 3. 需要的 tokenizer 文件
+          tokenizer_files = ["tokenizer.json", "tokenizer_config.json"]
+          
+          # 4. 下载所有文件
+          files_to_download = [model_file] + tokenizer_files
+          for fname in files_to_download:
+              if fname not in all_files:
+                  print(f"Warning: {fname} not found in repository")
+                  continue
+              print(f"Downloading {fname} ...")
+              path = hf_hub_download(repo_id, fname, local_dir=".")
+              size = os.path.getsize(path)
+              print(f"  ✓ {fname}: {size:,} bytes")
+              if size < 1000:
+                  print(f"  ✗ {fname} is too small, aborting")
                   sys.exit(1)
-              print(f"✓ {fname}: {size:,} bytes")
-          print("ONNX export and verification complete.")
+
+          # 5. 如果模型文件不叫 model.onnx，重命名
+          if model_file != "model.onnx":
+              print(f"Renaming {model_file} -> model.onnx")
+              os.rename(model_file, "model.onnx")
+
+          print("All required files downloaded and verified.")
           PYEOF
 
       - name: Inject onnxruntime native lib
