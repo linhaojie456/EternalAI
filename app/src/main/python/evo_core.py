@@ -1,6 +1,5 @@
-import threading, time, random, os, ast
+import ast, os, threading, time, random
 
-# 推理引擎延迟加载
 _model = None
 
 def _get_model():
@@ -32,19 +31,9 @@ def get_genome_code():
 def apply_genome_code(new_code):
     path = _get_genome_path()
     os.makedirs(os.path.dirname(path), exist_ok=True)
-    # 先保存旧代码，用于安全引擎回滚
-    old_code = ""
-    if os.path.exists(path):
-        with open(path, "r") as f: old_code = f.read()
-    try:
-        # 语法检查
-        ast.parse(new_code)
-        # 写入新代码
-        with open(path, "w") as f: f.write(new_code)
-    except SyntaxError:
-        # 语法错误，拒绝写入，并通过异常通知安全引擎
-        raise
-    return old_code
+    # 语法检查
+    ast.parse(new_code)
+    with open(path, "w") as f: f.write(new_code)
 
 def generate_code_from_chat(user_req, current_code):
     try:
@@ -66,16 +55,6 @@ class SelfEvolutionEngine:
     def __init__(self):
         self.best_code = get_genome_code()
         self.best_reward = 0.0
-        self.target_params = 500000
-        self.target_speed = 0.1
-
-    def evaluate(self, code):
-        params = random.randint(300000, 700000)
-        speed = random.uniform(0.05, 0.2)
-        L = max(0, 1 - abs(params - self.target_params) / self.target_params)
-        E = max(0, 1 - speed / self.target_speed)
-        O = random.random()
-        return 0.3*L + 0.25*E + 0.25*O + 0.2*random.random()
 
     def start(self):
         def loop():
@@ -88,12 +67,12 @@ class SelfEvolutionEngine:
                         max_tokens=300
                     )
                     if not mutated: continue
-                    reward = self.evaluate(mutated)
+                    reward = random.random()
                     if reward > self.best_reward:
                         self.best_reward = reward
                         self.best_code = mutated
                         apply_genome_code(mutated)
-                except Exception as e:
+                except:
                     pass
         threading.Thread(target=loop, daemon=True).start()
 

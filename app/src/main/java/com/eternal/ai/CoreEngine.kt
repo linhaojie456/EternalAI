@@ -1,5 +1,7 @@
 package com.eternal.ai
+
 import android.content.Context
+
 class CoreEngine(private val context: Context) {
     // 六大核心引擎
     val inference = InferenceProxy()
@@ -8,6 +10,7 @@ class CoreEngine(private val context: Context) {
     val time = TimeEngine()
     val space = SpaceEngine()
     val emotion = EmotionEngine()
+
     // 六大辅助引擎
     val causality = CausalityEngine()
     val selfRef = SelfReferenceEngine()
@@ -22,7 +25,7 @@ class CoreEngine(private val context: Context) {
         emotion.start { onUpdate("emotion", it) }
         causality.start { onUpdate("causality", it) }
         selfRef.start { onUpdate("selfref", it) }
-        security.start { onUpdate("security", it) }
+        security.start(context) { onUpdate("security", it) }
         network.start { onUpdate("network", it) }
         split.start { onUpdate("split", it) }
         soul.start { onUpdate("soul", it) }
@@ -42,5 +45,6 @@ class CoreEngine(private val context: Context) {
         proactive.stop()
     }
 }
+
 class InferenceProxy
 class EvolutionProxy
