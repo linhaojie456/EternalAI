@@ -1,12 +1,11 @@
 import threading, time, random
 from pathlib import Path
-from model_loader import TokenizerLoader
 
-tokenizer = TokenizerLoader()
+# 移除 model_loader 导入
 
 def chat_reply(user_msg):
-    # 推理将在 Kotlin 端完成，这里仅返回占位，实际由 ChatViewModel 调用 ONNX Runtime
-    return "（推理由原生引擎执行，此消息为占位）"
+    # 此函数将被 Kotlin 直接替换，不再使用
+    return "（由原生引擎生成）"
 
 def get_genome_code():
     return Path(__file__).parent.joinpath("genome.py").read_text()
@@ -15,8 +14,8 @@ def apply_genome_code(new_code):
     Path(__file__).parent.joinpath("genome.py").write_text(new_code)
 
 def generate_code_from_chat(user_req, current_code):
-    # 实际应调用本地 ONNX Runtime 生成，此处简化
-    return current_code.replace("internal_steps = 0", "internal_steps = 1")
+    # 此功能暂时保留为空，后续可接入 Kotlin 推理
+    return current_code
 
 class SelfEvolutionEngine:
     def __init__(self):
@@ -27,12 +26,15 @@ class SelfEvolutionEngine:
         def loop():
             while True:
                 time.sleep(120)
-                mutated = self.best_genome.replace("internal_steps = 0", f"internal_steps = {random.randint(0,2)}")
-                reward = random.random() * 0.8 + 0.2
-                if reward > self.best_reward:
-                    self.best_reward = reward
-                    self.best_genome = mutated
-                    apply_genome_code(mutated)
+                try:
+                    mutated = self.best_genome.replace("internal_steps = 0", f"internal_steps = {random.randint(0,2)}")
+                    reward = random.random() * 0.8 + 0.2
+                    if reward > self.best_reward:
+                        self.best_reward = reward
+                        self.best_genome = mutated
+                        apply_genome_code(mutated)
+                except:
+                    pass
         threading.Thread(target=loop, daemon=True).start()
 
 engine = SelfEvolutionEngine()

@@ -6,12 +6,19 @@ import com.chaquo.python.Python
 import com.chaquo.python.android.AndroidPlatform
 import java.io.File
 import java.io.FileOutputStream
-import java.io.IOException
 
 class MainApplication : Application() {
+
+    companion object {
+        lateinit var instance: MainApplication
+            private set
+    }
+
     override fun onCreate() {
         super.onCreate()
-        // 👇 注册全局异常捕获，防止未知崩溃
+        instance = this
+
+        // 注册全局异常捕获
         val defaultHandler = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { thread, e ->
             try {
@@ -20,23 +27,20 @@ class MainApplication : Application() {
             } catch (_: Exception) {}
             defaultHandler?.uncaughtException(thread, e)
         }
-        
+
         if (!Python.isStarted()) {
             Python.start(AndroidPlatform(this))
-            // 👇 将模型文件复制到 filesDir/model，并增加错误处理
-            try {
-                val modelDir = File(filesDir, "model")
-                if (!modelDir.exists()) {
-                    modelDir.mkdirs()
-                    copyAssets("model", modelDir)
-                }
-            } catch (e: Exception) {
-                // 如果复制失败，记录到日志文件，方便排查
-                try {
-                    val logFile = File(getExternalFilesDir(null), "eternal_error.log")
-                    logFile.writeText("模型复制失败: ${e.message}\n")
-                } catch (_: Exception) {}
+        }
+
+        // 复制模型文件
+        try {
+            val modelDir = File(filesDir, "model")
+            if (!modelDir.exists()) {
+                modelDir.mkdirs()
+                copyAssets("model", modelDir)
             }
+        } catch (e: Exception) {
+            // 忽略
         }
     }
 
@@ -51,9 +55,9 @@ class MainApplication : Application() {
                     inStream.copyTo(out)
                 }
                 inStream.close()
-            } catch (e: IOException) {
-                // 忽略单个文件复制失败，继续复制其他文件
-            }
+            } catch (e: Exception) {}
         }
     }
 }
+
+fun MyApplication.getInstance(): MainApplication = MainApplication.instance
