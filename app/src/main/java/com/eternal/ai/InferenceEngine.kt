@@ -3,7 +3,6 @@ package com.eternal.ai
 import ai.onnxruntime.*
 import android.content.Context
 import java.io.File
-import java.nio.LongBuffer
 
 class InferenceEngine(private val context: Context) {
     private var session: OrtSession? = null
@@ -35,7 +34,7 @@ class InferenceEngine(private val context: Context) {
                 val outputs = sess.run(mapOf("input_ids" to inputTensor, "attention_mask" to maskTensor))
                 val logits = outputs["logits"].get().value as Array<Array<FloatArray>>
                 val nextToken = argmax(logits[0].last())
-                if (nextToken == 151643L) break // eos token
+                if (nextToken == 151643L) break // eos
 
                 generated.add(nextToken)
                 currentIds = currentIds + nextToken
@@ -46,6 +45,19 @@ class InferenceEngine(private val context: Context) {
             e.printStackTrace()
             return null
         }
+    }
+
+    fun start(coordinator: EngineCoordinator, onStatus: (String) -> Unit) {
+        val success = loadModel()
+        if (success) {
+            onStatus("[推理] 模型加载成功，推理引擎就绪")
+        } else {
+            onStatus("[推理] 模型加载失败，请检查文件")
+        }
+    }
+
+    fun stop() {
+        session?.close()
     }
 
     private fun argmax(array: FloatArray): Long = array.indices.maxByOrNull { array[it] }?.toLong() ?: 0
