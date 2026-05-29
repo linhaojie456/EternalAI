@@ -11,16 +11,27 @@ class MainApplication : Application() {
     override fun onCreate() {
         super.onCreate()
 
+        try {
+            System.loadLibrary("tokenizers")
+        } catch (e: UnsatisfiedLinkError) {
+            e.printStackTrace()
+        }
+
         if (!Python.isStarted()) {
             Python.start(AndroidPlatform(this))
         }
 
-        // 复制模型文件
         try {
             val modelDir = File(filesDir, "model")
             if (!modelDir.exists()) {
                 modelDir.mkdirs()
                 copyAssets("model", modelDir)
+            }
+            val genomeFile = File(filesDir, "genome.py")
+            if (!genomeFile.exists()) {
+                val inputStream = assets.open("genome.py")
+                FileOutputStream(genomeFile).use { out -> inputStream.copyTo(out) }
+                inputStream.close()
             }
         } catch (_: Exception) {}
     }
