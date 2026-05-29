@@ -27,7 +27,8 @@ android {
 chaquopy {
     defaultConfig {
         pip {
-            install("numpy")  // 保留 numpy
+            install("numpy")
+            install("tokenizers")  // 这个包在 Chaquopy 中是可用的
         }
     }
 }
@@ -38,8 +39,6 @@ dependencies {
     implementation("androidx.compose.ui:ui:1.5.0")
     implementation("androidx.compose.material3:material3:1.1.0")
     implementation("androidx.activity:activity-compose:1.7.2")
-    // ONNX Runtime for Android
+    // ONNX Runtime for Android（仅用于推理）
     implementation("com.microsoft.onnxruntime:onnxruntime-android:1.18.0")
-    // DJL Tokenizers（原生加载 tokenizer.json）
-    implementation("ai.djl.huggingface:tokenizers:0.27.0")
 }

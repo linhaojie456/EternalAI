@@ -1,15 +1,22 @@
 package com.eternal.ai
 
-import ai.djl.huggingface.tokenizers.HuggingFaceTokenizer
-import java.io.File
+import com.chaquo.python.Python
 
-class TokenizerHelper(modelDir: File) {
-    private val tokenizer: HuggingFaceTokenizer = HuggingFaceTokenizer.newInstance(modelDir.toPath())
+class TokenizerHelper {
+    private val pyModule = Python.getInstance().getModule("tokenizer_helper")
 
-    fun encode(text: String): LongArray = tokenizer.encode(text).ids
+    fun encode(text: String): LongArray {
+        val result = pyModule.callAttr("encode", text)
+        val list = result.asList() ?: return LongArray(0)
+        return list.map { (it as Number).toLong() }.toLongArray()
+    }
 
-    fun decode(ids: LongArray): String = tokenizer.decode(ids)
+    fun decode(ids: LongArray): String {
+        return pyModule.callAttr("decode", ids.toList()).toString()
+    }
 
-    // DJL 0.27.0 中，eosTokenId 直接属于 HuggingFaceTokenizer 实例
-    val eosTokenId: Long = tokenizer.eosTokenId
+    fun eosTokenId(): Long {
+        val result = pyModule.callAttr("eos_token_id")
+        return (result as? Number)?.toLong() ?: 151643L
+    }
 }
