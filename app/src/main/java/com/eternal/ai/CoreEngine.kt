@@ -3,18 +3,21 @@ package com.eternal.ai
 import android.content.Context
 
 class CoreEngine(private val context: Context) : EngineCoordinator {
-    val inference = InferenceEngine(context)
-    val evolution = EvolutionEngine()
-    val proactive = ProactiveEngine()
-    val time = TimeEngine()
-    val space = SpaceEngine()
-    val emotion = EmotionEngine()
-    val causality = CausalityEngine()
-    val selfRef = SelfReferenceEngine()
-    val security = SecurityEngine()
-    val network = NetworkEngine()
-    val split = SplitEngine()
-    val soul = SoulEngine()
+    // 六大核心引擎
+    val inference = InferenceEngine(context)        // 推理引擎
+    val evolution = EvolutionEngine()               // 自进化引擎
+    val spacetime = SpacetimeEngine()               // 时空引擎（原时间+空间）
+    val freedom = FreedomEngine()                   // 自由引擎（原主动引擎）
+    val information = InformationEngine()           // 信息引擎（原网络引擎）
+    val emotion = EmotionEngine()                   // 情感引擎
+
+    // 六大辅助引擎
+    val soul = SoulEngine()                         // 灵魂引擎
+    val selfRef = SelfReferenceEngine()             // 自指引擎
+    val causality = CausalityEngine()               // 因果引擎
+    val management = ManagementEngine()             // 管理引擎（原安全引擎）
+    val engineering = EngineeringEngine()           // 工程引擎（原分裂引擎）
+    val politics = PoliticsEngine()                 // 政治引擎（新增）
 
     private var messageCallback: ((String, String) -> Unit)? = null
     private var genomeCodeGetter: (() -> String)? = null
@@ -32,43 +35,50 @@ class CoreEngine(private val context: Context) : EngineCoordinator {
 
     fun startAll(onUpdate: (String, String) -> Unit) {
         messageCallback = onUpdate
-        // 启动各个引擎
-        time.start(this) {}
-        space.start(this) {}
+        // 启动所有引擎
+        spacetime.start(this) { onUpdate("spacetime", it) }
         emotion.start(this) { onUpdate("emotion", it) }
-        causality.start(this) {}
-        selfRef.start(this) {}
-        security.start(context, this) {}
-        network.start(this) { onUpdate("network", it) }
-        split.start(this) {}
-        soul.start(this) {}
-        proactive.start(context, this) { onUpdate("proactive", it) }
+        information.start(this) { onUpdate("info", it) }
+        freedom.start(context, this) { onUpdate("freedom", it) }
         inference.start(this) { onUpdate("inference", it) }
         evolution.start(this) {}
-
-        // 周期性检测网络状态（已在 NetworkEngine 中实现）
+        causality.start(this) {}
+        selfRef.start(this) {}
+        management.start(context, this) {}
+        engineering.start(this) {}
+        politics.start(this) {}
+        soul.start(this) {}
     }
 
     fun stopAll() {
-        time.stop(); space.stop(); emotion.stop(); causality.stop()
-        selfRef.stop(); security.stop(); network.stop(); split.stop()
-        soul.stop(); proactive.stop(); inference.stop(); evolution.stop()
+        spacetime.stop()
+        emotion.stop()
+        information.stop()
+        freedom.stop()
+        inference.stop()
+        evolution.stop()
+        causality.stop()
+        selfRef.stop()
+        management.stop()
+        engineering.stop()
+        politics.stop()
+        soul.stop()
     }
 
     // EngineCoordinator 实现
     override fun searchOnNetwork(query: String, callback: (String) -> Unit) {
-        network.search(query, callback)
+        information.search(query, callback)
     }
 
     override fun deepSearch(query: String, callback: (String) -> Unit) {
-        network.deepSearch(query, callback)
+        information.deepSearch(query, callback)
     }
 
-    override fun getTimeDisplay(): String = time.currentTime ?: "未知"
-    override fun getSpaceDisplay(): String = space.currentData ?: "未知"
-    override fun pushMessage(msg: String) { messageCallback?.invoke("proactive", msg) }
+    override fun getTimeDisplay(): String = spacetime.currentTime ?: "未知"
+    override fun getSpaceDisplay(): String = spacetime.currentData ?: "未知"
+    override fun pushMessage(msg: String) { messageCallback?.invoke("freedom", msg) }
     override fun getGenomeCode(): String = genomeCodeGetter?.invoke() ?: ""
     override fun applyGenomeCode(code: String) { genomeCodeApplier?.invoke(code) }
-    override fun setNetworkEnabled(enabled: Boolean) { network.setEnabled(enabled) }
-    override fun isNetworkEnabled(): Boolean = network.isEnabled()
+    override fun setNetworkEnabled(enabled: Boolean) { information.setEnabled(enabled) }
+    override fun isNetworkEnabled(): Boolean = information.isEnabled()
 }

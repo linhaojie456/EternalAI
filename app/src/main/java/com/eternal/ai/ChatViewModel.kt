@@ -19,7 +19,7 @@ data class ChatState(
 class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private val _state = MutableStateFlow(ChatState())
     val state: StateFlow<ChatState> = _state.asStateFlow()
-    
+
     private val coreEngine = CoreEngine(application)
     private val bridge = PythonBridge.instance
 
@@ -45,11 +45,11 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
         coreEngine.startAll { type, data ->
             when (type) {
-                "network" -> {
+                "info" -> {
                     val connected = !data.contains("离线")
                     _state.value = _state.value.copy(isNetworkConnected = connected)
                 }
-                "proactive" -> _state.value = _state.value.copy(
+                "freedom", "spacetime" -> _state.value = _state.value.copy(
                     messages = _state.value.messages + "永恒: $data"
                 )
             }

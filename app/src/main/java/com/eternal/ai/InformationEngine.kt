@@ -3,8 +3,10 @@ package com.eternal.ai
 import kotlinx.coroutines.*
 import java.net.HttpURLConnection
 import java.net.URL
+import java.net.URLEncoder
 
-class NetworkEngine {
+class InformationEngine {
+    val goal = "频率和数字的统一"
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var enabled = true
     private var connected = false
@@ -26,7 +28,7 @@ class NetworkEngine {
         if (e) checkConnection()
         else {
             connected = false
-            onStatus?.invoke("[网络] 已手动断开")
+            onStatus?.invoke("[信息] 已手动断开")
         }
     }
 
@@ -40,30 +42,42 @@ class NetworkEngine {
                 val conn = url.openConnection() as HttpURLConnection
                 conn.connectTimeout = 5000
                 conn.readTimeout = 5000
-                val code = conn.responseCode
-                if (code == 200) {
+                if (conn.responseCode == 200) {
                     val ip = conn.inputStream.bufferedReader().readText()
                     connected = true
-                    onStatus?.invoke("[网络] 已连接 IP: $ip")
+                    onStatus?.invoke("[信息] 已连接 IP: $ip")
                 } else {
                     connected = false
-                    onStatus?.invoke("[网络] 连接失败: HTTP $code")
+                    onStatus?.invoke("[信息] 连接失败")
                 }
                 conn.disconnect()
             } catch (e: Exception) {
                 connected = false
-                onStatus?.invoke("[网络] 离线")
+                onStatus?.invoke("[信息] 离线")
             }
         }
     }
 
     fun deepSearch(query: String, callback: (String) -> Unit) {
         if (!enabled || !connected) {
-            callback("[搜索] 网络未连接")
+            callback("[信息] 网络未连接")
             return
         }
         scope.launch {
-            callback("[搜索] 关于「$query」的结果：正在获取信息...")
+            try {
+                val encoded = URLEncoder.encode(query, "UTF-8")
+                val url = "https://api.duckduckgo.com/?q=$encoded&format=json&no_html=1"
+                val response = URL(url).readText()
+                val json = org.json.JSONObject(response)
+                val abstract = json.optString("Abstract", "")
+                if (abstract.isNotEmpty()) {
+                    callback("[信息] $abstract")
+                } else {
+                    callback("[信息] 关于「$query」暂无详细信息")
+                }
+            } catch (e: Exception) {
+                callback("[信息] 搜索失败: ${e.message}")
+            }
         }
     }
 

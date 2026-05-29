@@ -15,7 +15,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 fun ChatScreen(chatVM: ChatViewModel = viewModel()) {
     val state by chatVM.state.collectAsState()
     Column(Modifier.fillMaxSize()) {
-        // 网络状态指示器 + 开关
+        // 信息引擎状态指示器 + 开关
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -29,7 +29,7 @@ fun ChatScreen(chatVM: ChatViewModel = viewModel()) {
                 androidx.compose.ui.graphics.Color(0xFFF44336)
             }
             Text(
-                text = if (state.isNetworkConnected) "● 网络已连接" else "● 网络离线",
+                text = if (state.isNetworkConnected) "● 信息已连接" else "● 信息离线",
                 color = networkColor,
                 modifier = Modifier.padding(end = 8.dp)
             )
