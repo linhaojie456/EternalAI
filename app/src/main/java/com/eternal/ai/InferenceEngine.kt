@@ -39,7 +39,7 @@ class InferenceEngine(private val context: Context) {
             val logits = outputs["logits"].get().value as Array<Array<FloatArray>>
             val nextTokenLogits = logits[0][logits[0].size - 1]
             val nextToken = nextTokenLogits.indices.maxByOrNull { nextTokenLogits[it] }?.toLong() ?: break
-            if (nextToken == tok.eosTokenId()) break
+            if (nextToken == tok.eosTokenId) break
 
             generated.add(nextToken)
             inputIds.add(nextToken)
