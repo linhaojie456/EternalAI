@@ -17,7 +17,7 @@ data class DevState(
 class DevViewModel(application: Application) : AndroidViewModel(application) {
     private val _state = MutableStateFlow(DevState())
     val state: StateFlow<DevState> = _state.asStateFlow()
-    private val bridge = PythonBridge.instance
+    private val bridge = PythonBridge
 
     init {
         viewModelScope.launch(Dispatchers.Default) {
@@ -28,20 +28,23 @@ class DevViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun updateGenomeCode(newCode: String) { _state.value = _state.value.copy(genomeCode = newCode) }
+    fun updateGenomeCode(newCode: String) {
+        _state.value = _state.value.copy(genomeCode = newCode)
+    }
 
     fun sendDevCommand(cmd: String) {
         _state.value = _state.value.copy(devMessages = _state.value.devMessages + "造物主: $cmd")
         viewModelScope.launch(Dispatchers.Default) {
             try {
-                val result = bridge.call("generate_code_from_chat", cmd, _state.value.genomeCode)
-                val newCode = result?.toString() ?: _state.value.genomeCode
+                val newCode = bridge.call("generate_code_from_chat", cmd, _state.value.genomeCode).toString()
                 _state.value = _state.value.copy(
                     genomeCode = newCode,
                     devMessages = _state.value.devMessages + "永恒: 代码已生成，请查看上方编辑器并应用"
                 )
             } catch (e: Exception) {
-                _state.value = _state.value.copy(devMessages = _state.value.devMessages + "永恒: 生成失败: ${e.message}")
+                _state.value = _state.value.copy(
+                    devMessages = _state.value.devMessages + "永恒: 生成失败: ${e.message}"
+                )
             }
         }
     }
