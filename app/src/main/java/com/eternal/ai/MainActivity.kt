@@ -1,14 +1,13 @@
 package com.eternal.ai
 
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
-import androidx.lifecycle.viewmodel.compose.viewModel
 
 class MainActivity : ComponentActivity() {
     @OptIn(ExperimentalMaterial3Api::class)
@@ -24,12 +23,19 @@ class MainActivity : ComponentActivity() {
                             Button(onClick = { devMode = !devMode }) {
                                 Text(if (devMode) "聊天" else "开发")
                             }
+                            Button(onClick = {
+                                startActivity(Intent(this@MainActivity, EngineMonitorActivity::class.java))
+                            }) {
+                                Text("引擎")
+                            }
                         }
                     )
                 }
             ) { padding ->
                 Box(Modifier.padding(padding)) {
-                    if (devMode) DevScreen() else ChatScreen()
+                    if (devMode) DevScreen() else ChatScreen(onShowMonitor = {
+                        startActivity(Intent(this@MainActivity, EngineMonitorActivity::class.java))
+                    })
                 }
             }
         }

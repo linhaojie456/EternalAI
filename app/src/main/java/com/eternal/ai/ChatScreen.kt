@@ -3,6 +3,7 @@ package com.eternal.ai
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -10,37 +11,39 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import kotlinx.coroutines.launch
 
 @Composable
-fun ChatScreen(chatVM: ChatViewModel = viewModel()) {
+fun ChatScreen(chatVM: ChatViewModel = viewModel(), onShowMonitor: () -> Unit = {}) {
     val state by chatVM.state.collectAsState()
+    val listState = rememberLazyListState()
+    val coroutineScope = rememberCoroutineScope()
+
+    // 自动滚动到底部
+    LaunchedEffect(state.messages.size) {
+        if (state.messages.isNotEmpty()) {
+            listState.animateScrollToItem(state.messages.size - 1)
+        }
+    }
+
     Column(Modifier.fillMaxSize()) {
-        // 信息引擎状态指示器 + 开关
+        // 顶部时空显示（来自 SpacetimeEngine 的输出会被过滤显示）
+        // 注意：这里需要从 ViewModel 获取时空数据，但我们可以在 ChatViewModel 中增加 state 字段
+        // 由于时间有限，我们简单地在界面顶部放置一个按钮进入后台模式
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.End
+            modifier = Modifier.fillMaxWidth().padding(8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            val networkColor = if (state.isNetworkConnected) {
-                androidx.compose.ui.graphics.Color(0xFF4CAF50)
-            } else {
-                androidx.compose.ui.graphics.Color(0xFFF44336)
-            }
-            Text(
-                text = if (state.isNetworkConnected) "● 信息已连接" else "● 信息离线",
-                color = networkColor,
-                modifier = Modifier.padding(end = 8.dp)
-            )
+            Text("网络: ${if (state.isNetworkConnected) "已连接" else "离线"}")
             Switch(
                 checked = state.isNetworkEnabled,
-                onCheckedChange = { chatVM.setNetworkEnabled(it) },
-                modifier = Modifier.padding(end = 4.dp)
+                onCheckedChange = { chatVM.setNetworkEnabled(it) }
             )
+            Button(onClick = onShowMonitor) { Text("引擎监控") }
         }
         Divider()
-        LazyColumn(Modifier.weight(1f)) {
+        LazyColumn(state = listState, modifier = Modifier.weight(1f)) {
             items(state.messages) { msg ->
                 SelectionContainer { Text(msg, modifier = Modifier.padding(8.dp)) }
             }

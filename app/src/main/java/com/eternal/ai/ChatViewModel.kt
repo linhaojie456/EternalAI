@@ -3,6 +3,8 @@ package com.eternal.ai
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.eternal.ai.data.AppDatabase
+import com.eternal.ai.data.ChatMessage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -18,13 +20,23 @@ data class ChatState(
 class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private val _state = MutableStateFlow(ChatState())
     val state: StateFlow<ChatState> = _state.asStateFlow()
-
+    private val dao = AppDatabase.getInstance(application).messageDao()
     private val coreEngine = try { CoreEngine(application) } catch (e: Exception) { null }
-    private val bridge: PythonBridge = PythonBridge
+    private val bridge = PythonBridge
 
     init {
+        // 从数据库恢复聊天记录
+        viewModelScope.launch(Dispatchers.IO) {
+            dao.getAllChatMessages().collect { dbMessages ->
+                if (dbMessages.isNotEmpty()) {
+                    _state.value = _state.value.copy(
+                        messages = dbMessages.map { "${it.sender}: ${it.content}" }
+                    )
+                }
+            }
+        }
+
         viewModelScope.launch(Dispatchers.Default) {
-            // 尝试注入推理引擎（即使失败也不影响界面）
             try {
                 coreEngine?.let { engine ->
                     val python = com.chaquo.python.Python.getInstance()
@@ -33,7 +45,6 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 }
             } catch (_: Exception) {}
 
-            // 设置基因组访问器
             try {
                 coreEngine?.setGenomeAccessor(
                     getter = { bridge.call("get_genome_code").toString() },
@@ -41,14 +52,19 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 )
             } catch (_: Exception) {}
 
-            // 启动所有引擎（每个引擎独立保护）
             try {
                 coreEngine?.startAll { type, data ->
                     when (type) {
                         "info" -> _state.value = _state.value.copy(isNetworkConnected = !data.contains("离线"))
-                        "freedom", "spacetime" -> _state.value = _state.value.copy(
-                            messages = _state.value.messages + "永恒: $data"
-                        )
+                        "proactive", "freedom" -> {
+                            // 主动引擎产生的对话直接存入数据库
+                            viewModelScope.launch(Dispatchers.IO) {
+                                dao.insertMessage(ChatMessage(sender = "永恒", content = data))
+                            }
+                            _state.value = _state.value.copy(
+                                messages = _state.value.messages + "永恒: $data"
+                            )
+                        }
                     }
                 }
             } catch (_: Exception) {}
@@ -56,19 +72,26 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun sendMessage(text: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            dao.insertMessage(ChatMessage(sender = "造物主", content = text))
+        }
         _state.value = _state.value.copy(messages = _state.value.messages + "造物主: $text")
+
         viewModelScope.launch(Dispatchers.Default) {
             val reply = try {
                 bridge.call("chat_reply", text)?.toString() ?: "推理引擎未响应"
             } catch (e: Exception) {
                 "推理出错: ${e.message}"
             }
+            viewModelScope.launch(Dispatchers.IO) {
+                dao.insertMessage(ChatMessage(sender = "永恒", content = reply))
+            }
             _state.value = _state.value.copy(messages = _state.value.messages + "永恒: $reply")
         }
     }
 
     fun setNetworkEnabled(enabled: Boolean) {
-        try { coreEngine?.setNetworkEnabled(enabled) } catch (_: Exception) {}
+        coreEngine?.setNetworkEnabled(enabled)
         _state.value = _state.value.copy(isNetworkEnabled = enabled)
     }
 
