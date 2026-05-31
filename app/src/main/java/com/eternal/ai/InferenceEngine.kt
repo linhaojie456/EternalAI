@@ -71,7 +71,8 @@ class InferenceEngine(private val context: Context) {
                 val logits = outputs["logits"].get().value as Array<Array<FloatArray>>
                 val nextTokenLogits = logits[0][logits[0].size - 1]
                 val nextToken = nextTokenLogits.indices.maxByOrNull { nextTokenLogits[it] }?.toLong() ?: break
-                if (nextToken == tok.eosTokenId) break
+                // 使用硬编码的 EOS token ID
+                if (nextToken == TokenizerHelper.EOS_TOKEN_ID) break
                 generated.add(nextToken)
                 inputIds.add(nextToken)
                 attentionMask.add(1L)

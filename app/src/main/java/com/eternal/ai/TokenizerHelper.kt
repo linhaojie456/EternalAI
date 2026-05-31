@@ -14,11 +14,9 @@ class TokenizerHelper(modelDir: File) {
 
     fun encode(text: String): LongArray = tokenizer?.encode(text)?.ids ?: LongArray(0)
     fun decode(ids: LongArray): String = tokenizer?.decode(ids) ?: ""
-    val eosTokenId: Long by lazy {
-        try {
-            tokenizer?.eosTokenId ?: 151643L
-        } catch (e: Exception) {
-            151643L
-        }
+
+    // 硬编码 EOS token ID
+    companion object {
+        const val EOS_TOKEN_ID: Long = 151643L
     }
 }
