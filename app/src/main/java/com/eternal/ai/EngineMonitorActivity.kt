@@ -12,6 +12,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 
 class EngineMonitorActivity : ComponentActivity() {
+    @OptIn(ExperimentalMaterial3Api::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
@@ -35,7 +36,6 @@ class EngineMonitorActivity : ComponentActivity() {
     }
 
     private fun getEngineStatusList(): List<EngineStatus> {
-        // 这里只是示例，实际应从 CoreEngine 获取实时状态
         return listOf(
             EngineStatus("推理引擎", "运行中", "答案和问题的统一"),
             EngineStatus("自进化引擎", "后台运行", "轻量、高效、自主和全知全能"),

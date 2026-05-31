@@ -137,7 +137,8 @@ class InferenceEngine(private val context: Context) {
         }
     }
 
-    fun generate(prompt: String, maxTokens: Int = 200): String? {
+    // 改为位置参数，便于 Chaquopy 调用
+    fun generate(prompt: String, maxTokens: Int): String? {
         return reason(prompt)
     }
 

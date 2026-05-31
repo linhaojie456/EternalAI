@@ -32,7 +32,7 @@ fun DevScreen(devVM: DevViewModel = viewModel()) {
             label = { Text("genome.py") }
         )
         Divider()
-        LazyColumn(state = listState, Modifier.weight(0.4f)) {
+        LazyColumn(state = listState, modifier = Modifier.weight(0.4f)) {
             items(state.devMessages) { msg ->
                 SelectionContainer { Text(msg, modifier = Modifier.padding(4.dp)) }
             }
