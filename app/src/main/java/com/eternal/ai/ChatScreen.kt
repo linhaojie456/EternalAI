@@ -9,15 +9,14 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import kotlinx.coroutines.launch
 
 @Composable
 fun ChatScreen(chatVM: ChatViewModel = viewModel()) {
     val state by chatVM.state.collectAsState()
     val listState = rememberLazyListState()
-    val coroutineScope = rememberCoroutineScope()
 
     LaunchedEffect(state.messages.size) {
         if (state.messages.isNotEmpty()) {
@@ -26,13 +25,14 @@ fun ChatScreen(chatVM: ChatViewModel = viewModel()) {
     }
 
     Column(Modifier.fillMaxSize()) {
-        // 顶部信息：网络状态、开关
+        // 网络状态与开关
         Row(
             modifier = Modifier.fillMaxWidth().padding(8.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text("网络: ${if (state.isNetworkConnected) "已连接" else "离线"}")
+            val networkColor = if (state.isNetworkConnected) Color(0xFF4CAF50) else Color(0xFFF44336)
+            Text("网络: ${if (state.isNetworkConnected) "已连接" else "离线"}", color = networkColor)
             Switch(
                 checked = state.isNetworkEnabled,
                 onCheckedChange = { chatVM.setNetworkEnabled(it) }

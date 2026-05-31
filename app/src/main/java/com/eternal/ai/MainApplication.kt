@@ -28,14 +28,11 @@ class MainApplication : Application() {
         try { System.loadLibrary("onnxruntime") } catch (_: UnsatisfiedLinkError) {}
         try { if (!Python.isStarted()) Python.start(AndroidPlatform(this)) } catch (e: Exception) {}
 
-        try {
-            copyAssetsIfNeeded()
-        } catch (_: Exception) {}
+        try { copyAssetsIfNeeded() } catch (_: Exception) {}
 
-        // 初始化 CoreEngine（延迟异常）
-        coreEngine = try { CoreEngine(this) } catch (e: Exception) { CoreEngine(this) }
+        coreEngine = CoreEngine(this)
 
-        // 启动前台服务以保持后台
+        // 前台服务
         val intent = Intent(this, EternalService::class.java)
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
             startForegroundService(intent)
@@ -50,7 +47,6 @@ class MainApplication : Application() {
             modelDir.mkdirs()
             copyAssets("model", modelDir)
         }
-
         val genomeFile = File(filesDir, "genome.py")
         if (!genomeFile.exists()) {
             assets.open("genome.py").use { input ->
