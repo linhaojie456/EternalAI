@@ -25,7 +25,6 @@ fun ChatScreen(chatVM: ChatViewModel = viewModel()) {
     }
 
     Column(Modifier.fillMaxSize()) {
-        // 网络状态与开关
         Row(
             modifier = Modifier.fillMaxWidth().padding(8.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
