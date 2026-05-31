@@ -39,7 +39,7 @@ dependencies {
     implementation("androidx.compose.ui:ui:1.5.0")
     implementation("androidx.compose.material3:material3:1.1.0")
     implementation("androidx.activity:activity-compose:1.7.2")
-    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.18.0")
+    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.21.1")
     implementation("ai.djl.huggingface:tokenizers:0.27.0")  // DJL 原生分词
     implementation("androidx.room:room-runtime:2.6.1")
     implementation("androidx.room:room-ktx:2.6.1")

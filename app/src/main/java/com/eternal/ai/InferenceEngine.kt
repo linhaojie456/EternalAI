@@ -8,6 +8,7 @@ class InferenceEngine(private val context: Context) {
     val goal = "答案和问题的统一"
     var lastError: String? = null
     var loadStatus: String = "未初始化"
+    var modelSize: Long = 0
 
     private var session: OrtSession? = null
     private var tokenizer: TokenizerHelper? = null
@@ -17,36 +18,52 @@ class InferenceEngine(private val context: Context) {
         private set
 
     fun loadModel(): Boolean {
-        loadStatus = "开始加载..."
+        loadStatus = "检查模型文件..."
         try {
             val modelDir = File(context.filesDir, "model")
             val modelFile = File(modelDir, "model.onnx")
+
+            if (!modelDir.exists()) {
+                lastError = "模型目录不存在: ${modelDir.absolutePath}"
+                loadStatus = "失败: $lastError"
+                return false
+            }
+
             if (!modelFile.exists()) {
-                lastError = "模型文件不存在: ${modelFile.absolutePath}"
+                // 尝试列出目录中的文件
+                val files = modelDir.listFiles()?.joinToString { it.name } ?: "空"
+                lastError = "模型文件不存在: ${modelFile.absolutePath}，目录内容: $files"
                 loadStatus = "失败: $lastError"
                 return false
             }
-            if (modelFile.length() < 1000000) {
-                lastError = "模型文件异常小 (${modelFile.length()} bytes)"
+
+            modelSize = modelFile.length()
+            if (modelSize < 1_000_000) {
+                lastError = "模型文件异常小: $modelSize 字节"
                 loadStatus = "失败: $lastError"
                 return false
             }
+
+            loadStatus = "创建 ONNX 会话 (ONNX Runtime 1.21.1)..."
             val options = OrtSession.SessionOptions()
             session = env.createSession(modelFile.absolutePath, options)
+
+            loadStatus = "加载分词器..."
             tokenizer = TokenizerHelper(modelDir)
             if (tokenizer?.tokenizer == null) {
-                lastError = "分词器初始化失败: ${tokenizer?.loadError}"
+                lastError = "分词器加载失败: ${tokenizer?.loadError}"
                 loadStatus = "失败: $lastError"
                 isModelLoaded = false
                 return false
             }
+
             isModelLoaded = true
             lastError = null
-            loadStatus = "模型已加载，大小: ${modelFile.length()} bytes"
+            loadStatus = "模型已加载 (${modelSize / (1024*1024)} MB)"
             return true
         } catch (e: Exception) {
-            lastError = e.message ?: "未知错误"
-            loadStatus = "失败: $lastError"
+            lastError = "${e.javaClass.simpleName}: ${e.message}"
+            loadStatus = "加载异常: $lastError"
             e.printStackTrace()
             return false
         }
@@ -54,7 +71,7 @@ class InferenceEngine(private val context: Context) {
 
     fun generate(prompt: String, maxTokens: Int = 200): String? {
         if (!isModelLoaded) {
-            lastError = "模型未加载"
+            lastError = "模型未加载 ($loadStatus)"
             return null
         }
         val tok = tokenizer ?: run { lastError = "分词器为空"; return null }
@@ -71,7 +88,6 @@ class InferenceEngine(private val context: Context) {
                 val logits = outputs["logits"].get().value as Array<Array<FloatArray>>
                 val nextTokenLogits = logits[0][logits[0].size - 1]
                 val nextToken = nextTokenLogits.indices.maxByOrNull { nextTokenLogits[it] }?.toLong() ?: break
-                // 使用硬编码的 EOS token ID
                 if (nextToken == TokenizerHelper.EOS_TOKEN_ID) break
                 generated.add(nextToken)
                 inputIds.add(nextToken)

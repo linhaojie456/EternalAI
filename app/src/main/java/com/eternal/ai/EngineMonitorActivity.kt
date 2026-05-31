@@ -25,6 +25,9 @@ class EngineMonitorActivity : ComponentActivity() {
                                 Text("引擎: ${status.name}")
                                 Text("状态: ${status.state}")
                                 Text("目标: ${status.goal}")
+                                if (status.detail.isNotEmpty()) {
+                                    Text("详情: ${status.detail}", color = MaterialTheme.colorScheme.primary)
+                                }
                                 if (status.error.isNotEmpty()) {
                                     Text("错误: ${status.error}", color = MaterialTheme.colorScheme.error)
                                 }
@@ -37,11 +40,13 @@ class EngineMonitorActivity : ComponentActivity() {
     }
 
     private fun getEngineStatusList(core: CoreEngine?): List<EngineStatus> {
+        val inf = core?.inference
         return listOf(
             EngineStatus("推理引擎",
-                if (core?.inference?.isModelLoaded == true) "模型已加载" else "未加载",
+                if (inf?.isModelLoaded == true) "模型已加载" else "未加载",
                 "答案和问题的统一",
-                core?.inference?.lastError ?: core?.inference?.loadStatus ?: ""),
+                detail = inf?.loadStatus ?: "",
+                error = inf?.lastError ?: ""),
             EngineStatus("信息引擎",
                 if (core?.information?.isEnabled() == true) "已连接" else "离线",
                 "频率和数字的统一"),
@@ -63,5 +68,6 @@ data class EngineStatus(
     val name: String,
     val state: String,
     val goal: String,
+    val detail: String = "",
     val error: String = ""
 )
