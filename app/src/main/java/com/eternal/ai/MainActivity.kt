@@ -33,9 +33,7 @@ class MainActivity : ComponentActivity() {
                 }
             ) { padding ->
                 Box(Modifier.padding(padding)) {
-                    if (devMode) DevScreen() else ChatScreen(onShowMonitor = {
-                        startActivity(Intent(this@MainActivity, EngineMonitorActivity::class.java))
-                    })
+                    if (devMode) DevScreen() else ChatScreen()
                 }
             }
         }

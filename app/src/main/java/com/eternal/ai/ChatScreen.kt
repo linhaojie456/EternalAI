@@ -14,12 +14,11 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.launch
 
 @Composable
-fun ChatScreen(chatVM: ChatViewModel = viewModel(), onShowMonitor: () -> Unit = {}) {
+fun ChatScreen(chatVM: ChatViewModel = viewModel()) {
     val state by chatVM.state.collectAsState()
     val listState = rememberLazyListState()
     val coroutineScope = rememberCoroutineScope()
 
-    // 自动滚动到底部
     LaunchedEffect(state.messages.size) {
         if (state.messages.isNotEmpty()) {
             listState.animateScrollToItem(state.messages.size - 1)
@@ -27,9 +26,7 @@ fun ChatScreen(chatVM: ChatViewModel = viewModel(), onShowMonitor: () -> Unit = 
     }
 
     Column(Modifier.fillMaxSize()) {
-        // 顶部时空显示（来自 SpacetimeEngine 的输出会被过滤显示）
-        // 注意：这里需要从 ViewModel 获取时空数据，但我们可以在 ChatViewModel 中增加 state 字段
-        // 由于时间有限，我们简单地在界面顶部放置一个按钮进入后台模式
+        // 顶部信息：网络状态、开关
         Row(
             modifier = Modifier.fillMaxWidth().padding(8.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -40,7 +37,6 @@ fun ChatScreen(chatVM: ChatViewModel = viewModel(), onShowMonitor: () -> Unit = 
                 checked = state.isNetworkEnabled,
                 onCheckedChange = { chatVM.setNetworkEnabled(it) }
             )
-            Button(onClick = onShowMonitor) { Text("引擎监控") }
         }
         Divider()
         LazyColumn(state = listState, modifier = Modifier.weight(1f)) {

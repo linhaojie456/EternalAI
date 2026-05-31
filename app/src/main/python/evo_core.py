@@ -10,7 +10,8 @@ def chat_reply(user_msg):
     if _inference_engine is None:
         return "推理引擎未就绪"
     try:
-        reply = _inference_engine.generate(user_msg, maxTokens=200)
+        # 使用位置参数调用，避免关键字参数错误
+        reply = _inference_engine.generate(user_msg, 200)
         return reply if reply else "（模型返回空）"
     except Exception as e:
         return f"推理错误: {e}"
@@ -37,7 +38,7 @@ def generate_code_from_chat(user_req, current_code):
         return current_code
     prompt = f"修改以下Python模型定义以满足需求：\n{current_code}\n需求：{user_req}\n只返回代码。"
     try:
-        new_code = _inference_engine.generate(prompt, maxTokens=500)
+        new_code = _inference_engine.generate(prompt, 500)
         return new_code if new_code else current_code
     except:
         return current_code

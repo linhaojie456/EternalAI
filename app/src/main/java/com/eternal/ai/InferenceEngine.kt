@@ -137,8 +137,9 @@ class InferenceEngine(private val context: Context) {
         }
     }
 
-    // 改为位置参数，便于 Chaquopy 调用
-    fun generate(prompt: String, maxTokens: Int): String? {
+    // 两个明确的重载，避免 Chaquopy 映射关键字参数失败
+    @JvmOverloads
+    fun generate(prompt: String, maxTokens: Int = 200): String? {
         return reason(prompt)
     }
 
