@@ -11,7 +11,11 @@ def chat_reply(user_msg):
         return "推理引擎未就绪"
     try:
         reply = _inference_engine.generate(user_msg, 200)
-        return reply if reply else "（无输出）"
+        if reply is None:
+            return "（推理失败: 模型未就绪）"
+        if reply.strip() == "":
+            return "（推理输出为空）"
+        return reply
     except Exception as e:
         return f"推理错误: {e}"
 
@@ -34,13 +38,17 @@ def apply_genome_code(new_code):
 
 def generate_code_from_chat(user_req, current_code):
     if _inference_engine is None:
-        return current_code
+        return current_code, "推理引擎未就绪"
     prompt = f"修改以下Python模型定义以满足需求：\n{current_code}\n需求：{user_req}\n只返回代码。"
     try:
         new_code = _inference_engine.generate(prompt, 500)
-        return new_code if new_code and len(new_code) > 10 else current_code
-    except:
-        return current_code
+        if new_code is None:
+            return current_code, "模型未加载，无法生成"
+        if len(new_code.strip()) < 10:
+            return current_code, f"生成内容过短: {new_code}"
+        return new_code, None  # 成功，无错误
+    except Exception as e:
+        return current_code, f"生成异常: {e}"
 
 def check_genome_syntax(code):
     try:

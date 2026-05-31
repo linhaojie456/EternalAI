@@ -41,7 +41,7 @@ class EngineMonitorActivity : ComponentActivity() {
             EngineStatus("推理引擎",
                 if (core?.inference?.isModelLoaded == true) "模型已加载" else "未加载",
                 "答案和问题的统一",
-                core?.inference?.lastError ?: ""),
+                core?.inference?.lastError ?: core?.inference?.loadStatus ?: ""),
             EngineStatus("信息引擎",
                 if (core?.information?.isEnabled() == true) "已连接" else "离线",
                 "频率和数字的统一"),

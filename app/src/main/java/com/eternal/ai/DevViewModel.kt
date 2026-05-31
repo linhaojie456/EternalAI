@@ -38,8 +38,6 @@ class DevViewModel(application: Application) : AndroidViewModel(application) {
                 val code = bridge.call("get_genome_code").toString()
                 if (code != "null" && code.isNotEmpty()) {
                     _state.value = _state.value.copy(genomeCode = code)
-                } else {
-                    _state.value = _state.value.copy(genomeCode = "# 默认基因组\nclass EternalModel(nn.Module):\n    ...")
                 }
             } catch (_: Exception) {}
         }
@@ -57,17 +55,31 @@ class DevViewModel(application: Application) : AndroidViewModel(application) {
 
         viewModelScope.launch(Dispatchers.Default) {
             try {
-                val newCode = bridge.call("generate_code_from_chat", cmd, _state.value.genomeCode).toString()
-                viewModelScope.launch(Dispatchers.IO) {
-                    dao.insertMessage(ChatMessage(sender = "永恒", content = "代码已生成", isDevMode = true))
+                // 调用 Python 函数，返回元组 (new_code, error_msg)
+                val result = bridge.call("generate_code_from_chat", cmd, _state.value.genomeCode)
+                // result 可能是 Python tuple，转为列表
+                val resultList = (result as? List<*>) ?: listOf(_state.value.genomeCode, "未知结果")
+                val newCode = resultList.getOrNull(0)?.toString() ?: _state.value.genomeCode
+                val errorMsg = resultList.getOrNull(1)?.toString()
+
+                if (errorMsg != null && errorMsg != "None" && errorMsg.isNotEmpty()) {
+                    // 生成失败
+                    _state.value = _state.value.copy(
+                        devMessages = _state.value.devMessages + "永恒: 生成失败: $errorMsg"
+                    )
+                } else {
+                    // 生成成功，更新编辑器
+                    viewModelScope.launch(Dispatchers.IO) {
+                        dao.insertMessage(ChatMessage(sender = "永恒", content = "代码已生成", isDevMode = true))
+                    }
+                    _state.value = _state.value.copy(
+                        genomeCode = newCode,
+                        devMessages = _state.value.devMessages + "永恒: 代码已生成，请查看上方编辑器并应用"
+                    )
                 }
-                _state.value = _state.value.copy(
-                    genomeCode = newCode,
-                    devMessages = _state.value.devMessages + "永恒: 代码已生成，请查看上方编辑器并应用"
-                )
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
-                    devMessages = _state.value.devMessages + "永恒: 生成失败: ${e.message}"
+                    devMessages = _state.value.devMessages + "永恒: 生成异常: ${e.message}"
                 )
             }
         }

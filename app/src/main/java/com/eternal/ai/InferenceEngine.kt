@@ -7,6 +7,7 @@ import java.io.File
 class InferenceEngine(private val context: Context) {
     val goal = "答案和问题的统一"
     var lastError: String? = null
+    var loadStatus: String = "未初始化"
 
     private var session: OrtSession? = null
     private var tokenizer: TokenizerHelper? = null
@@ -16,29 +17,47 @@ class InferenceEngine(private val context: Context) {
         private set
 
     fun loadModel(): Boolean {
-        return try {
-            val modelFile = File(context.filesDir, "model/model.onnx")
+        loadStatus = "开始加载..."
+        try {
+            val modelDir = File(context.filesDir, "model")
+            val modelFile = File(modelDir, "model.onnx")
             if (!modelFile.exists()) {
-                lastError = "模型文件不存在"
+                lastError = "模型文件不存在: ${modelFile.absolutePath}"
+                loadStatus = "失败: $lastError"
+                return false
+            }
+            if (modelFile.length() < 1000000) {
+                lastError = "模型文件异常小 (${modelFile.length()} bytes)"
+                loadStatus = "失败: $lastError"
                 return false
             }
             val options = OrtSession.SessionOptions()
             session = env.createSession(modelFile.absolutePath, options)
-            tokenizer = TokenizerHelper(File(context.filesDir, "model"))
+            tokenizer = TokenizerHelper(modelDir)
+            if (tokenizer == null) {
+                lastError = "分词器初始化失败"
+                loadStatus = "失败: $lastError"
+                return false
+            }
             isModelLoaded = true
             lastError = null
+            loadStatus = "模型已加载，大小: ${modelFile.length()} bytes"
             true
         } catch (e: Exception) {
             lastError = e.message ?: "未知错误"
+            loadStatus = "失败: $lastError"
             e.printStackTrace()
             false
         }
     }
 
     fun generate(prompt: String, maxTokens: Int = 200): String? {
-        if (!isModelLoaded || tokenizer == null) return null
+        if (!isModelLoaded) {
+            lastError = "模型未加载"
+            return null
+        }
+        val tok = tokenizer ?: run { lastError = "分词器为空"; return null }
         return try {
-            val tok = tokenizer!!
             val inputIds = tok.encode(prompt).toMutableList()
             val attentionMask = MutableList(inputIds.size) { 1L }
             val generated = mutableListOf<Long>()
@@ -59,14 +78,14 @@ class InferenceEngine(private val context: Context) {
             val fullIds = (inputIds + generated).toLongArray()
             tok.decode(fullIds).removePrefix(prompt).trim()
         } catch (e: Exception) {
-            lastError = "推理错误: ${e.message}"
+            lastError = "推理异常: ${e.message}"
             null
         }
     }
 
     fun start(coordinator: EngineCoordinator, onStatus: (String) -> Unit) {
         loadModel()
-        onStatus(if (isModelLoaded) "[推理] 模型已加载" else "[推理] 模型加载失败: ${lastError}")
+        onStatus(if (isModelLoaded) "[推理] 模型已加载" else "[推理] 加载失败: ${lastError ?: "未知"}")
     }
 
     fun stop() { session?.close() }
