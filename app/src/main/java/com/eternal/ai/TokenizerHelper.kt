@@ -10,6 +10,12 @@ class TokenizerHelper(modelDir: File) {
 
     fun decode(ids: LongArray): String = tokenizer.decode(ids)
 
-    // DJL 0.27.0 中 eosTokenId 是 HuggingFaceTokenizer 的直接属性
-    val eosTokenId: Long = tokenizer.eosTokenId
+    // 尝试获取 eosTokenId，失败则返回默认值 151643
+    val eosTokenId: Long by lazy {
+        try {
+            javaClass.getMethod("getEosTokenId").invoke(this) as? Long ?: 151643L
+        } catch (e: Exception) {
+            151643L
+        }
+    }
 }
