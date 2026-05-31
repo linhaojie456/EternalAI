@@ -9,6 +9,9 @@ import java.io.File
 import java.io.FileOutputStream
 
 class MainApplication : Application() {
+    lateinit var coreEngine: CoreEngine
+        private set
+
     override fun onCreate() {
         super.onCreate()
 
@@ -28,6 +31,9 @@ class MainApplication : Application() {
         try {
             copyAssetsIfNeeded()
         } catch (_: Exception) {}
+
+        // 初始化 CoreEngine（延迟异常）
+        coreEngine = try { CoreEngine(this) } catch (e: Exception) { CoreEngine(this) }
 
         // 启动前台服务以保持后台
         val intent = Intent(this, EternalService::class.java)

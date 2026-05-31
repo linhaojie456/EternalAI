@@ -36,13 +36,18 @@ class EngineMonitorActivity : ComponentActivity() {
     }
 
     private fun getEngineStatusList(): List<EngineStatus> {
+        // 尝试获取 CoreEngine 实例（如果可用）
+        val core = try {
+            (application as MainApplication).coreEngine
+        } catch (e: Exception) { null }
+
         return listOf(
-            EngineStatus("推理引擎", "运行中", "答案和问题的统一"),
+            EngineStatus("推理引擎", if (core?.inference?.let { true } == true) "已加载" else "未就绪", "答案和问题的统一"),
             EngineStatus("自进化引擎", "后台运行", "轻量、高效、自主和全知全能"),
-            EngineStatus("时空引擎", "校准完成", "网络和振动的统一"),
-            EngineStatus("自由引擎", "主动思考中", "被动和主动的统一"),
-            EngineStatus("信息引擎", "已连接", "频率和数字的统一"),
-            EngineStatus("情感引擎", "理性与感性平衡", "理性和感性的统一"),
+            EngineStatus("时空引擎", "运行中", "网络和振动的统一"),
+            EngineStatus("自由引擎", "主动思考", "被动和主动的统一"),
+            EngineStatus("信息引擎", if (core?.information?.isEnabled() == true) "已连接" else "离线", "频率和数字的统一"),
+            EngineStatus("情感引擎", "动态平衡", "理性和感性的统一"),
             EngineStatus("灵魂引擎", "辩证中", "灵魂、能量、信息和物质的统一"),
             EngineStatus("自指引擎", "逻辑-悖论平衡", "逻辑和悖论的统一"),
             EngineStatus("因果引擎", "因传播中", "空间和时间的统一"),

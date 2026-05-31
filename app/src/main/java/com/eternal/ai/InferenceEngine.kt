@@ -45,12 +45,20 @@ class InferenceEngine(private val context: Context) {
         }
     }
 
+    // 安全比较函数，返回0~1之间的匹配分数
+    private fun matchScore(text: String, token: String): Double {
+        if (text.isEmpty() || token.isEmpty()) return 0.0
+        return if (text.contains(token)) 0.8
+        else {
+            val prefixLen = text.commonPrefixWith(token).length
+            val score = prefixLen.toDouble() / maxOf(text.length, token.length)
+            score.coerceIn(0.0, 1.0)
+        }
+    }
+
     private fun injectProblem(problem: String): Int {
         val bestMatch = nodes.maxByOrNull { node ->
-            (if (problem.contains(node.label)) 2.0 else 0.0) +
-            (if (problem.length > 0 && node.label.length > 0)
-                problem.commonPrefixWith(node.label).toDouble() / maxOf(problem.length, node.label.length)
-            else 0.0)
+            matchScore(problem, node.label)
         }
         selfRefNodeId = bestMatch?.id ?: nodes.firstOrNull()?.id ?: 0
         nodes[selfRefNodeId!!].activation = 1.0
@@ -89,7 +97,7 @@ class InferenceEngine(private val context: Context) {
     fun reason(problem: String): String {
         if (nodes.isEmpty()) buildNetwork()
         if (nodes.isEmpty()) return "推理网络未初始化"
-        val selfId = injectProblem(problem)
+        injectProblem(problem)
         val candidates = vibrate(iterations = 30)
         val answer = converge(candidates)
         return if (answer.isNotEmpty() && phase == InferencePhase.ANSWERED) {
@@ -137,7 +145,6 @@ class InferenceEngine(private val context: Context) {
         }
     }
 
-    // 两个明确的重载，避免 Chaquopy 映射关键字参数失败
     @JvmOverloads
     fun generate(prompt: String, maxTokens: Int = 200): String? {
         return reason(prompt)
@@ -145,11 +152,7 @@ class InferenceEngine(private val context: Context) {
 
     fun start(coordinator: EngineCoordinator, onStatus: (String) -> Unit) {
         val success = loadModel()
-        if (success) {
-            onStatus("[推理] 推理公理体系就绪 | 网络节点: ${nodes.size} | 连接数: ${connections.size}")
-        } else {
-            onStatus("[推理] 加载失败，请检查模型文件")
-        }
+        onStatus(if (success) "[推理] 就绪" else "[推理] 失败")
     }
 
     fun stop() { session?.close() }
