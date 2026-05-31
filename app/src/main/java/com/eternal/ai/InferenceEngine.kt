@@ -34,20 +34,21 @@ class InferenceEngine(private val context: Context) {
             val options = OrtSession.SessionOptions()
             session = env.createSession(modelFile.absolutePath, options)
             tokenizer = TokenizerHelper(modelDir)
-            if (tokenizer == null) {
-                lastError = "分词器初始化失败"
+            if (tokenizer?.tokenizer == null) {
+                lastError = "分词器初始化失败: ${tokenizer?.loadError}"
                 loadStatus = "失败: $lastError"
+                isModelLoaded = false
                 return false
             }
             isModelLoaded = true
             lastError = null
             loadStatus = "模型已加载，大小: ${modelFile.length()} bytes"
-            true
+            return true
         } catch (e: Exception) {
             lastError = e.message ?: "未知错误"
             loadStatus = "失败: $lastError"
             e.printStackTrace()
-            false
+            return false
         }
     }
 

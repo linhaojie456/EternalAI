@@ -1,6 +1,6 @@
 package com.eternal.ai
 
-import ai.djl.huggingface.tokeners.HuggingFaceTokenizer
+import ai.djl.huggingface.tokenizers.HuggingFaceTokenizer
 import java.io.File
 
 class TokenizerHelper(modelDir: File) {
