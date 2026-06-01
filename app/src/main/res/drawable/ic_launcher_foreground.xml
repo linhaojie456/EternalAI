@@ -3,34 +3,37 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
+    <!-- 外三角 (安全边距) -->
     <path
         android:fillColor="#00000000"
-        android:pathData="M54,14 L94,86 L14,86 Z"
+        android:pathData="M54,18 L90,82 L18,82 Z"
         android:strokeColor="#D4AF37"
-        android:strokeWidth="3.5" />
+        android:strokeWidth="3" />
+    <!-- 左眼弧 -->
     <path
         android:fillColor="#00000000"
-        android:pathData="M54,40 A8,14 0,1,1 53.9,40 Z"
+        android:pathData="M42,50 Q54,40 66,50"
         android:strokeColor="#D4AF37"
-        android:strokeWidth="2" />
+        android:strokeWidth="2.5" />
+    <!-- 右眼弧 (实际上垂直对称) -->
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M42,58 Q54,68 66,58"
+        android:strokeColor="#D4AF37"
+        android:strokeWidth="2.5" />
+    <!-- 瞳孔 (圆形路径) -->
     <path
         android:fillColor="#D4AF37"
-        android:pathData="M48.5,54 A5.5,5.5 0,1,1 48.49,54 Z" />
+        android:pathData="M50,50 A4,4 0,1,1 50,49.99 Z" />
     <path
-        android:fillColor="#00000000"
-        android:pathData="M42,42 Q54,34 66,42"
-        android:strokeColor="#D4AF37"
-        android:strokeWidth="2" />
-    <path
-        android:fillColor="#00000000"
-        android:pathData="M44,66 Q54,74 64,66"
-        android:strokeColor="#D4AF37"
-        android:strokeWidth="2" />
-    <path android:pathData="M54,45 L54,34" android:strokeColor="#D4AF37" android:strokeWidth="1.5" />
-    <path android:pathData="M60,48 L68,42" android:strokeColor="#D4AF37" android:strokeWidth="1.5" />
-    <path android:pathData="M63,55 L71,55" android:strokeColor="#D4AF37" android:strokeWidth="1.5" />
-    <path android:pathData="M60,62 L68,68" android:strokeColor="#D4AF37" android:strokeWidth="1.5" />
-    <path android:pathData="M48,48 L40,42" android:strokeColor="#D4AF37" android:strokeWidth="1.5" />
-    <path android:pathData="M45,55 L37,55" android:strokeColor="#D4AF37" android:strokeWidth="1.5" />
-    <path android:pathData="M48,62 L40,68" android:strokeColor="#D4AF37" android:strokeWidth="1.5" />
+        android:fillColor="#D4AF37"
+        android:pathData="M58,50 A4,4 0,1,1 58,49.99 Z" />
+    <!-- 光芒射线 -->
+    <path android:pathData="M54,38 L54,30" android:strokeColor="#D4AF37" android:strokeWidth="1.5" />
+    <path android:pathData="M62,40 L68,34" android:strokeColor="#D4AF37" android:strokeWidth="1.5" />
+    <path android:pathData="M46,40 L40,34" android:strokeColor="#D4AF37" android:strokeWidth="1.5" />
+    <path android:pathData="M64,56 L72,56" android:strokeColor="#D4AF37" android:strokeWidth="1.5" />
+    <path android:pathData="M44,56 L36,56" android:strokeColor="#D4AF37" android:strokeWidth="1.5" />
+    <path android:pathData="M62,68 L68,74" android:strokeColor="#D4AF37" android:strokeWidth="1.5" />
+    <path android:pathData="M46,68 L40,74" android:strokeColor="#D4AF37" android:strokeWidth="1.5" />
 </vector>
