@@ -125,9 +125,14 @@ class InferenceEngine(private val context: Context) {
                 }
                 if (newPast.isNotEmpty()) pastKeyValues = newPast
             }
+
             val fullIds = (inputIds + generated).toLongArray()
-            val result = tok.decode(fullIds).removePrefix(prompt).trim()
-            return if (result.isBlank()) "（推理输出为空）" else result
+            val rawOutput = tok.decode(fullIds)
+            // 如果移除前缀后为空，则返回原始输出末尾部分，避免完全空白
+            val cleaned = rawOutput.removePrefix(prompt).trim()
+            if (cleaned.isNotBlank()) return cleaned
+            // 备用：返回最后 100 个字符
+            return if (rawOutput.length > prompt.length) rawOutput.substring(prompt.length).trim().ifBlank { "（推理输出为空）" } else "（推理输出为空）"
         } catch (e: Exception) { lastError = "推理异常: ${e.message}"; return null }
     }
 

@@ -26,7 +26,6 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private val bridge = PythonBridge
 
     init {
-        // 从数据库恢复聊天记录
         viewModelScope.launch(Dispatchers.IO) {
             dao.getAllChatMessages().collect { dbMessages ->
                 if (dbMessages.isNotEmpty()) {
@@ -37,7 +36,6 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
 
-        // 注入推理引擎，启动所有引擎
         viewModelScope.launch(Dispatchers.Default) {
             try {
                 val python = com.chaquo.python.Python.getInstance()
@@ -54,10 +52,9 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
             coreEngine.startAll { type, data ->
                 when (type) {
-                    "inference" -> {
-                        _state.value = _state.value.copy(inferenceStatus = data)
-                    }
+                    "inference" -> _state.value = _state.value.copy(inferenceStatus = data)
                     "info" -> {
+                        // data 内容为 "[信息] 已连接 IP: ..." 或 "[信息] 离线"
                         val connected = !data.contains("离线")
                         _state.value = _state.value.copy(isNetworkConnected = connected)
                     }
@@ -72,9 +69,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun sendMessage(text: String) {
-        viewModelScope.launch(Dispatchers.IO) {
-            dao.insertMessage(ChatMessage(sender = "造物主", content = text))
-        }
+        viewModelScope.launch(Dispatchers.IO) { dao.insertMessage(ChatMessage(sender = "造物主", content = text)) }
         _state.value = _state.value.copy(messages = _state.value.messages + "造物主: $text")
 
         viewModelScope.launch(Dispatchers.Default) {
@@ -83,9 +78,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             } catch (e: Exception) {
                 "推理出错: ${e.message}"
             }
-            viewModelScope.launch(Dispatchers.IO) {
-                dao.insertMessage(ChatMessage(sender = "永恒", content = reply))
-            }
+            viewModelScope.launch(Dispatchers.IO) { dao.insertMessage(ChatMessage(sender = "永恒", content = reply)) }
             _state.value = _state.value.copy(messages = _state.value.messages + "永恒: $reply")
         }
     }

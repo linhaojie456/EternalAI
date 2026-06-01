@@ -20,9 +20,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         setContent {
             var currentScreen by remember { mutableStateOf("chat") }
-            val chatVM = (application as MainApplication).let { app ->
-                ChatViewModel(app)
-            }
+            val chatVM = remember { ChatViewModel(application) }
             val state by chatVM.state.collectAsState()
 
             Box(modifier = Modifier.fillMaxSize().background(DeepSeekColors.Background)) {
@@ -34,7 +32,11 @@ class MainActivity : ComponentActivity() {
             }
             // 底部导航栏
             Surface(color = DeepSeekColors.Surface, shadowElevation = 8.dp, modifier = Modifier.fillMaxWidth()) {
-                Row(modifier = Modifier.fillMaxWidth().padding(8.dp), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(8.dp),
+                    horizontalArrangement = Arrangement.SpaceEvenly,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     Button(onClick = { currentScreen = "chat" }, colors = ButtonDefaults.buttonColors(containerColor = DeepSeekColors.Surface)) {
                         Text("聊天", color = if (currentScreen == "chat") DeepSeekColors.Gold else DeepSeekColors.Gray)
                     }
@@ -56,7 +58,10 @@ class MainActivity : ComponentActivity() {
                             checked = state.isNetworkEnabled,
                             onCheckedChange = { chatVM.setNetworkEnabled(it) },
                             modifier = Modifier.height(24.dp),
-                            colors = SwitchDefaults.colors(checkedTrackColor = DeepSeekColors.Gold, uncheckedTrackColor = DeepSeekColors.Gray)
+                            colors = SwitchDefaults.colors(
+                                checkedTrackColor = DeepSeekColors.Gold,
+                                uncheckedTrackColor = DeepSeekColors.Gray
+                            )
                         )
                     }
                 }
