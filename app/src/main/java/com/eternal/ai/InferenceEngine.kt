@@ -56,14 +56,13 @@ class InferenceEngine(private val context: Context) {
         }
     }
 
-    // 创建空的 past_key_values 张量
     private fun createEmptyPastKeyValues(): Map<String, OnnxTensor> {
-        // 根据模型结构，通常每层有 key 和 value，形状 (batch, num_kv_heads, seq_len, head_dim)
-        val numLayers = 24  // Qwen 1.5B 有 24 层
-        val numKVHeads = 4  // GQA: 4 KV heads
-        val headDim = 128   // 1536 / 12 = 128
+        val numLayers = 24
+        val numKVHeads = 4
+        val headDim = 128
         val emptyShape = longArrayOf(1L, numKVHeads.toLong(), 0L, headDim.toLong())
-        val emptyTensor = OnnxTensor.createTensor(env, FloatArray(0), emptyShape)
+        val buf = FloatBuffer.allocate(0)
+        val emptyTensor = OnnxTensor.createTensor(env, buf, emptyShape)
         
         val map = mutableMapOf<String, OnnxTensor>()
         for (i in 0 until numLayers) {
@@ -98,7 +97,7 @@ class InferenceEngine(private val context: Context) {
                 inputs.putAll(pastKeyValues)
 
                 val outputs = sess.run(inputs)
-                val logits = outputs["logits"].get().value as Array<Array<FloatArray>>
+                val logits = (outputs["logits"]?.value as? Array<Array<FloatArray>>) ?: break
                 val nextTokenLogits = logits[0][logits[0].size - 1]
                 val nextToken = nextTokenLogits.indices.maxByOrNull { nextTokenLogits[it] }?.toLong() ?: break
 
@@ -108,41 +107,28 @@ class InferenceEngine(private val context: Context) {
                 attentionMask.add(1L)
                 positionIds.add(positionIds.size.toLong())
 
-                // 更新 past_key_values（如果模型输出 present 张量）
+                // 更新 past_key_values
                 val newPast = mutableMapOf<String, OnnxTensor>()
                 for ((key, value) in outputs) {
-                    if (key.startsWith("present")) {
+                    if (key.startsWith("present.")) {
                         val parts = key.removePrefix("present.").split(".")
-                        val layerIndex = parts[0].toIntOrNull() ?: continue
-                        if (key.endsWith(".key")) {
-                            newPast["past_key_values.$layerIndex.key"] = value
-                        } else if (key.endsWith(".value")) {
-                            newPast["past_key_values.$layerIndex.value"] = value
+                        if (parts.size >= 2) {
+                            val layerIndex = parts[0].toIntOrNull() ?: continue
+                            if (key.endsWith(".key")) {
+                                newPast["past_key_values.$layerIndex.key"] = value as? OnnxTensor ?: continue
+                            } else if (key.endsWith(".value")) {
+                                newPast["past_key_values.$layerIndex.value"] = value as? OnnxTensor ?: continue
+                            }
                         }
                     }
                 }
-                if (newPast.isNotEmpty()) {
-                    pastKeyValues = newPast
-                } else {
-                    // 如果模型不输出 present，手动扩展缓存（简化）
-                    for (layer in 0 until 24) {
-                        val keyName = "past_key_values.$layer.key"
-                        val valueName = "past_key_values.$layer.value"
-                        val oldKey = pastKeyValues[keyName]
-                        val oldValue = pastKeyValues[valueName]
-                        if (oldKey != null && oldValue != null) {
-                            val oldShape = oldKey.info.shape
-                            // 无法直接修改形状，这里先保持原样
-                        }
-                    }
-                }
+                if (newPast.isNotEmpty()) pastKeyValues = newPast
             }
 
             val fullIds = (inputIds + generated).toLongArray()
             tok.decode(fullIds).removePrefix(prompt).trim()
         } catch (e: Exception) {
             lastError = "推理异常: ${e.message}"
-            e.printStackTrace()
             null
         }
     }
