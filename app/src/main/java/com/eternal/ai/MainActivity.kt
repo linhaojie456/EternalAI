@@ -9,7 +9,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
-import com.eternal.ai.DeepSeekColors
+import androidx.compose.ui.unit.dp
 
 class MainActivity : ComponentActivity() {
     @OptIn(ExperimentalMaterial3Api::class)
@@ -28,7 +28,7 @@ class MainActivity : ComponentActivity() {
             Surface(
                 color = DeepSeekColors.Surface,
                 shadowElevation = 8.dp,
-                modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
+                modifier = Modifier.fillMaxWidth()
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(8.dp),
