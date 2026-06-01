@@ -11,7 +11,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -39,7 +38,7 @@ fun ChatScreen(chatVM: ChatViewModel = viewModel()) {
             .background(DeepSeekColors.Background)
     ) {
         Column(Modifier.fillMaxSize()) {
-            // 顶部标题栏
+            // 标题栏
             Surface(color = DeepSeekColors.Surface, shadowElevation = 4.dp) {
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(12.dp),
@@ -47,7 +46,6 @@ fun ChatScreen(chatVM: ChatViewModel = viewModel()) {
                 ) {
                     Text("永恒", color = DeepSeekColors.Gold, fontSize = 20.sp, fontWeight = FontWeight.Bold)
                     Spacer(Modifier.weight(1f))
-                    // 推理状态指示
                     val statusColor = if (state.inferenceStatus.contains("已加载")) DeepSeekColors.Gold else DeepSeekColors.Gray
                     Text("●", color = statusColor, fontSize = 14.sp)
                     Spacer(Modifier.width(4.dp))
@@ -55,7 +53,7 @@ fun ChatScreen(chatVM: ChatViewModel = viewModel()) {
                 }
             }
 
-            // 思考过程展示（模拟 DeepSeek 的深度思考）
+            // 思考过程展示
             if (thinkingText.isNotEmpty()) {
                 Surface(
                     color = DeepSeekColors.Surface,
@@ -135,7 +133,7 @@ fun ChatScreen(chatVM: ChatViewModel = viewModel()) {
                     Button(
                         onClick = {
                             chatVM.sendMessage(input)
-                            thinkingText = "正在分析问题..."
+                            thinkingText = "正在深度思考..."
                             input = ""
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = DeepSeekColors.Gold),

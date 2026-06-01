@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 
 class MainActivity : ComponentActivity() {
@@ -34,16 +35,28 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxWidth().padding(8.dp),
                     horizontalArrangement = Arrangement.SpaceEvenly
                 ) {
-                    Button(onClick = { currentScreen = "chat" }, colors = ButtonDefaults.buttonColors(containerColor = DeepSeekColors.Surface)) {
+                    Button(
+                        onClick = { currentScreen = "chat" },
+                        colors = ButtonDefaults.buttonColors(containerColor = DeepSeekColors.Surface)
+                    ) {
                         Text("聊天", color = if (currentScreen == "chat") DeepSeekColors.Gold else DeepSeekColors.Gray)
                     }
-                    Button(onClick = { currentScreen = "dev" }, colors = ButtonDefaults.buttonColors(containerColor = DeepSeekColors.Surface)) {
+                    Button(
+                        onClick = { currentScreen = "dev" },
+                        colors = ButtonDefaults.buttonColors(containerColor = DeepSeekColors.Surface)
+                    ) {
                         Text("开发", color = if (currentScreen == "dev") DeepSeekColors.Gold else DeepSeekColors.Gray)
                     }
-                    Button(onClick = { currentScreen = "history" }, colors = ButtonDefaults.buttonColors(containerColor = DeepSeekColors.Surface)) {
+                    Button(
+                        onClick = { currentScreen = "history" },
+                        colors = ButtonDefaults.buttonColors(containerColor = DeepSeekColors.Surface)
+                    ) {
                         Text("历史", color = if (currentScreen == "history") DeepSeekColors.Gold else DeepSeekColors.Gray)
                     }
-                    Button(onClick = { startActivity(Intent(this@MainActivity, EngineMonitorActivity::class.java)) }, colors = ButtonDefaults.buttonColors(containerColor = DeepSeekColors.Surface)) {
+                    Button(
+                        onClick = { startActivity(Intent(this@MainActivity, EngineMonitorActivity::class.java)) },
+                        colors = ButtonDefaults.buttonColors(containerColor = DeepSeekColors.Surface)
+                    ) {
                         Text("引擎", color = DeepSeekColors.Gray)
                     }
                 }

@@ -11,6 +11,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.eternal.ai.data.AppDatabase
 import com.eternal.ai.data.ChatMessage
 import kotlinx.coroutines.Dispatchers
@@ -19,7 +20,8 @@ import kotlinx.coroutines.withContext
 
 @Composable
 fun HistoryScreen(onBack: () -> Unit) {
-    val dao = AppDatabase.getInstance(androidx.compose.ui.platform.LocalContext.current).messageDao()
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val dao = remember { AppDatabase.getInstance(context).messageDao() }
     var messages by remember { mutableStateOf<List<ChatMessage>>(emptyList()) }
     var searchQuery by remember { mutableStateOf("") }
     val scope = rememberCoroutineScope()
@@ -33,7 +35,6 @@ fun HistoryScreen(onBack: () -> Unit) {
     }
 
     Column(modifier = Modifier.fillMaxSize().background(DeepSeekColors.Background)) {
-        // 搜索栏
         Row(modifier = Modifier.padding(8.dp)) {
             OutlinedTextField(
                 value = searchQuery,
@@ -52,8 +53,7 @@ fun HistoryScreen(onBack: () -> Unit) {
                 onClick = {
                     scope.launch(Dispatchers.IO) {
                         if (searchQuery.isNotEmpty()) {
-                            val filtered = messages.filter { it.content.contains(searchQuery, ignoreCase = true) }
-                            messages = filtered
+                            messages = messages.filter { it.content.contains(searchQuery, ignoreCase = true) }
                         } else {
                             dao.getAllChatMessages().collect { messages = it }
                         }
@@ -64,7 +64,6 @@ fun HistoryScreen(onBack: () -> Unit) {
                 Text("搜索", color = Color.Black, fontWeight = FontWeight.Bold)
             }
         }
-        // 历史列表
         LazyColumn {
             items(messages) { msg ->
                 Card(
