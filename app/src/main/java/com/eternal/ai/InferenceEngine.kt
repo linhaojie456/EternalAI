@@ -18,7 +18,6 @@ class InferenceEngine(private val context: Context) {
     var isModelLoaded = false
         private set
 
-    // 动态获取的模型参数
     private var numKVHeads: Int = 2
     private var headDim: Int = 128
     private var numLayers: Int = 28
@@ -45,18 +44,22 @@ class InferenceEngine(private val context: Context) {
 
             // 动态获取模型输入输出信息
             val inputInfo = session!!.inputInfo
-            for ((name, info) in inputInfo) {
+            var maxLayerIndex = -1
+            for ((name, nodeInfo) in inputInfo) {
                 if (name.startsWith("past_key_values.")) {
-                    val shape = info.shape
-                    numKVHeads = shape[1].toInt()
-                    headDim = shape[3].toInt()
+                    val shape = nodeInfo.info.shape
+                    if (shape != null && shape.size >= 4) {
+                        numKVHeads = shape[1].toInt()
+                        headDim = shape[3].toInt()
+                    }
+                    val parts = name.split(".")
+                    if (parts.size >= 3) {
+                        val layerIndex = parts[2].toIntOrNull() ?: continue
+                        if (layerIndex > maxLayerIndex) maxLayerIndex = layerIndex
+                    }
                 }
             }
-            // 计算最大层数
-            numLayers = inputInfo.keys
-                .filter { it.startsWith("past_key_values.") }
-                .map { it.split(".")[2].toInt() }
-                .maxOrNull()?.plus(1) ?: 28
+            if (maxLayerIndex >= 0) numLayers = maxLayerIndex + 1
 
             loadStatus = "初始化分词器..."
             tokenizer = TokenizerHelper(modelDir)
@@ -138,7 +141,6 @@ class InferenceEngine(private val context: Context) {
                 attentionMask.add(1L)
                 positionIds.add(positionIds.size.toLong())
 
-                // 更新 past_key_values
                 val newPast = mutableMapOf<String, OnnxTensor>()
                 for ((key, value) in outputs) {
                     if (key.startsWith("present.")) {
