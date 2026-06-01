@@ -37,7 +37,12 @@ class InferenceEngine(private val context: Context) {
             val options = OrtSession.SessionOptions()
             session = env.createSession(modelFile.absolutePath, options)
             loadStatus = "初始化分词器..."
-            tokenizer = TokenizerHelper()  // 内部通过 Chaquopy 调用 Python
+            tokenizer = TokenizerHelper(modelDir)
+            if (tokenizer?.loadError != null) {
+                lastError = tokenizer?.loadError
+                loadStatus = "失败: $lastError"
+                return false
+            }
             isModelLoaded = true
             lastError = null
             loadStatus = "模型已加载 (${modelSize / (1024*1024)} MB)"
