@@ -24,7 +24,6 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 fun ChatScreen(chatVM: ChatViewModel = viewModel()) {
     val state by chatVM.state.collectAsState()
     val listState = rememberLazyListState()
-    var thinkingText by remember { mutableStateOf("") }
 
     LaunchedEffect(state.messages.size) {
         if (state.messages.isNotEmpty()) {
@@ -32,59 +31,45 @@ fun ChatScreen(chatVM: ChatViewModel = viewModel()) {
         }
     }
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(DeepSeekColors.Background)
-    ) {
+    Box(modifier = Modifier.fillMaxSize().background(DeepSeekColors.Background)) {
         Column(Modifier.fillMaxSize()) {
-            // 标题栏
+            // 顶部栏
             Surface(color = DeepSeekColors.Surface, shadowElevation = 4.dp) {
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(12.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
+                Row(modifier = Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text("永恒", color = DeepSeekColors.Gold, fontSize = 20.sp, fontWeight = FontWeight.Bold)
                     Spacer(Modifier.weight(1f))
+                    // 推理状态
                     val statusColor = if (state.inferenceStatus.contains("已加载")) DeepSeekColors.Gold else DeepSeekColors.Gray
                     Text("●", color = statusColor, fontSize = 14.sp)
                     Spacer(Modifier.width(4.dp))
                     Text(state.inferenceStatus.replace("[推理] ", ""), color = statusColor, fontSize = 12.sp)
-                }
-            }
-
-            // 思考过程展示
-            if (thinkingText.isNotEmpty()) {
-                Surface(
-                    color = DeepSeekColors.Surface,
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp)
-                ) {
-                    Text(
-                        "思考: $thinkingText",
-                        color = DeepSeekColors.GoldLight,
-                        modifier = Modifier.padding(8.dp),
-                        fontSize = 13.sp
+                    Spacer(Modifier.width(16.dp))
+                    // 网络开关
+                    val networkColor = if (state.isNetworkConnected) Color(0xFF4CAF50) else Color(0xFFF44336)
+                    Text("网络: ", color = DeepSeekColors.White, fontSize = 12.sp)
+                    Text(if (state.isNetworkConnected) "已连接" else "离线", color = networkColor, fontSize = 12.sp)
+                    Switch(
+                        checked = state.isNetworkEnabled,
+                        onCheckedChange = { chatVM.setNetworkEnabled(it) },
+                        modifier = Modifier.padding(start = 8.dp),
+                        colors = SwitchDefaults.colors(checkedTrackColor = DeepSeekColors.Gold, uncheckedTrackColor = DeepSeekColors.Gray)
                     )
                 }
             }
 
+            // 思考过程
+            if (state.messages.lastOrNull()?.startsWith("永恒:") == true) {
+                Surface(color = DeepSeekColors.Surface, modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp)) {
+                    Text("正在思考...", color = DeepSeekColors.GoldLight, modifier = Modifier.padding(8.dp), fontSize = 13.sp)
+                }
+            }
+
             // 消息列表
-            LazyColumn(
-                state = listState,
-                modifier = Modifier.weight(1f).padding(horizontal = 8.dp)
-            ) {
+            LazyColumn(state = listState, modifier = Modifier.weight(1f).padding(horizontal = 8.dp)) {
                 items(state.messages) { msg ->
                     val isUser = msg.startsWith("造物主:")
-                    Box(
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                        contentAlignment = if (isUser) Alignment.CenterEnd else Alignment.CenterStart
-                    ) {
-                        Surface(
-                            color = if (isUser) DeepSeekColors.UserBubble else DeepSeekColors.AiBubble,
-                            shape = RoundedCornerShape(12.dp),
-                            shadowElevation = 2.dp,
-                            modifier = Modifier.widthIn(max = 320.dp)
-                        ) {
+                    Box(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), contentAlignment = if (isUser) Alignment.CenterEnd else Alignment.CenterStart) {
+                        Surface(color = if (isUser) DeepSeekColors.UserBubble else DeepSeekColors.AiBubble, shape = RoundedCornerShape(12.dp), shadowElevation = 2.dp, modifier = Modifier.widthIn(max = 320.dp)) {
                             SelectionContainer {
                                 Text(
                                     text = buildAnnotatedString {
@@ -110,35 +95,17 @@ fun ChatScreen(chatVM: ChatViewModel = viewModel()) {
 
             // 输入栏
             Surface(color = DeepSeekColors.Surface, shadowElevation = 8.dp) {
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
+                Row(modifier = Modifier.fillMaxWidth().padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
                     var input by remember { mutableStateOf("") }
                     OutlinedTextField(
-                        value = input,
-                        onValueChange = { input = it },
+                        value = input, onValueChange = { input = it },
                         modifier = Modifier.weight(1f),
                         placeholder = { Text("发送消息...", color = DeepSeekColors.Gray) },
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedTextColor = DeepSeekColors.White,
-                            unfocusedTextColor = DeepSeekColors.White,
-                            focusedBorderColor = DeepSeekColors.Gold,
-                            unfocusedBorderColor = DeepSeekColors.Gray,
-                            cursorColor = DeepSeekColors.Gold
-                        ),
+                        colors = OutlinedTextFieldDefaults.colors(focusedTextColor = DeepSeekColors.White, unfocusedTextColor = DeepSeekColors.White, focusedBorderColor = DeepSeekColors.Gold, unfocusedBorderColor = DeepSeekColors.Gray, cursorColor = DeepSeekColors.Gold),
                         maxLines = 4
                     )
                     Spacer(Modifier.width(8.dp))
-                    Button(
-                        onClick = {
-                            chatVM.sendMessage(input)
-                            thinkingText = "正在深度思考..."
-                            input = ""
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = DeepSeekColors.Gold),
-                        shape = RoundedCornerShape(8.dp)
-                    ) {
+                    Button(onClick = { chatVM.sendMessage(input); input = "" }, colors = ButtonDefaults.buttonColors(containerColor = DeepSeekColors.Gold), shape = RoundedCornerShape(8.dp)) {
                         Text("发送", color = Color.Black, fontWeight = FontWeight.Bold)
                     }
                 }

@@ -3,10 +3,31 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
+    <!-- 外圈三角形 -->
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M54,6 L102,96 L6,96 Z"
+        android:strokeColor="#D4AF37"
+        android:strokeWidth="4" />
+    <!-- 瞳孔 -->
     <path
         android:fillColor="#D4AF37"
-        android:pathData="M54,20 C65,20 75,30 80,40 L70,50 L80,60 C75,70 65,80 54,80 C43,80 33,70 28,60 L38,50 L28,40 C33,30 43,20 54,20 Z" />
+        android:pathData="M54,50 A12,12 0,1,1 53.9,50.01 Z" />
+    <!-- 上下眼睑（弧形） -->
     <path
-        android:fillColor="#1A1A1A"
-        android:pathData="M54,38 L54,70 M38,54 L70,54" />
+        android:fillColor="#00000000"
+        android:pathData="M38,54 Q54,38 70,54"
+        android:strokeColor="#D4AF37"
+        android:strokeWidth="2.5" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M38,54 Q54,70 70,54"
+        android:strokeColor="#D4AF37"
+        android:strokeWidth="2.5" />
+    <!-- 放射线 -->
+    <path android:pathData="M54,46 L54,40" android:strokeColor="#D4AF37" android:strokeWidth="1.5" />
+    <path android:pathData="M62,50 L66,46" android:strokeColor="#D4AF37" android:strokeWidth="1.5" />
+    <path android:pathData="M46,50 L42,46" android:strokeColor="#D4AF37" android:strokeWidth="1.5" />
+    <path android:pathData="M60,58 L64,62" android:strokeColor="#D4AF37" android:strokeWidth="1.5" />
+    <path android:pathData="M48,58 L44,62" android:strokeColor="#D4AF37" android:strokeWidth="1.5" />
 </vector>

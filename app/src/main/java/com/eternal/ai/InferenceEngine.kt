@@ -56,9 +56,10 @@ class InferenceEngine(private val context: Context) {
         }
     }
 
+    // Qwen2.5-1.5B 的 KV 头数是 2，头维度 128
     private fun createEmptyPastKeyValues(): Map<String, OnnxTensor> {
         val numLayers = 24
-        val numKVHeads = 4
+        val numKVHeads = 2  // 修正：2
         val headDim = 128
         val shape = longArrayOf(1L, numKVHeads.toLong(), 0L, headDim.toLong())
         val map = mutableMapOf<String, OnnxTensor>()
@@ -70,19 +71,17 @@ class InferenceEngine(private val context: Context) {
         return map
     }
 
-    // 从 OnnxTensor 中提取三维浮点数组（shape: [1, seqLen, vocabSize]）
     private fun extractLogits(tensor: OnnxTensor): Array<Array<FloatArray>>? {
         val shape = tensor.info.shape
         if (shape.size != 3) return null
         val seqLen = shape[1].toInt()
         val vocabSize = shape[2].toInt()
         val buffer = tensor.floatBuffer
-        val result = Array(seqLen) { Array(1) { FloatArray(vocabSize) } }
+        val result = Array(seqLen) { FloatArray(vocabSize) }
         for (i in 0 until seqLen) {
-            buffer.get(result[i][0])
+            buffer.get(result[i])
         }
-        // 转换为 [1][seqLen][vocabSize] 形式
-        return arrayOf(result.map { it[0] }.toTypedArray())
+        return arrayOf(result)
     }
 
     fun generate(prompt: String, maxTokens: Int = 200): String? {
@@ -111,7 +110,6 @@ class InferenceEngine(private val context: Context) {
 
                 val outputs = sess.run(inputs)
 
-                // 提取 logits
                 val logitsTensor = outputs["logits"] as? OnnxTensor ?: break
                 val logits = extractLogits(logitsTensor) ?: break
                 val nextTokenLogits = logits[0][logits[0].size - 1]
@@ -123,7 +121,6 @@ class InferenceEngine(private val context: Context) {
                 attentionMask.add(1L)
                 positionIds.add(positionIds.size.toLong())
 
-                // 更新 past_key_values
                 val newPast = mutableMapOf<String, OnnxTensor>()
                 for ((key, value) in outputs) {
                     if (key.startsWith("present.")) {
