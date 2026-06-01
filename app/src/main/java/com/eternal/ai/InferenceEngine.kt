@@ -22,41 +22,22 @@ class InferenceEngine(private val context: Context) {
         try {
             val modelDir = File(context.filesDir, "model")
             val modelFile = File(modelDir, "model.onnx")
-
-            if (!modelDir.exists()) {
-                lastError = "模型目录不存在: ${modelDir.absolutePath}"
-                loadStatus = "失败: $lastError"
-                return false
-            }
-
             if (!modelFile.exists()) {
-                // 尝试列出目录中的文件
-                val files = modelDir.listFiles()?.joinToString { it.name } ?: "空"
-                lastError = "模型文件不存在: ${modelFile.absolutePath}，目录内容: $files"
+                lastError = "模型文件不存在"
                 loadStatus = "失败: $lastError"
                 return false
             }
-
             modelSize = modelFile.length()
             if (modelSize < 1_000_000) {
                 lastError = "模型文件异常小: $modelSize 字节"
                 loadStatus = "失败: $lastError"
                 return false
             }
-
-            loadStatus = "创建 ONNX 会话 (ONNX Runtime 1.21.1)..."
+            loadStatus = "创建 ONNX 会话..."
             val options = OrtSession.SessionOptions()
             session = env.createSession(modelFile.absolutePath, options)
-
-            loadStatus = "加载分词器..."
-            tokenizer = TokenizerHelper(modelDir)
-            if (tokenizer?.tokenizer == null) {
-                lastError = "分词器加载失败: ${tokenizer?.loadError}"
-                loadStatus = "失败: $lastError"
-                isModelLoaded = false
-                return false
-            }
-
+            loadStatus = "初始化分词器..."
+            tokenizer = TokenizerHelper()  // 内部通过 Chaquopy 调用 Python
             isModelLoaded = true
             lastError = null
             loadStatus = "模型已加载 (${modelSize / (1024*1024)} MB)"
@@ -70,13 +51,11 @@ class InferenceEngine(private val context: Context) {
     }
 
     fun generate(prompt: String, maxTokens: Int = 200): String? {
-        if (!isModelLoaded) {
-            lastError = "模型未加载 ($loadStatus)"
-            return null
-        }
-        val tok = tokenizer ?: run { lastError = "分词器为空"; return null }
+        if (!isModelLoaded) return null
+        val tok = tokenizer ?: return null
         return try {
             val inputIds = tok.encode(prompt).toMutableList()
+            if (inputIds.isEmpty()) return "分词失败"
             val attentionMask = MutableList(inputIds.size) { 1L }
             val generated = mutableListOf<Long>()
 
