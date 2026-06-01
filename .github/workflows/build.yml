@@ -11,14 +11,10 @@ jobs:
         with: {java-version: '17', distribution: 'temurin'}
       - uses: gradle/actions/setup-gradle@v3
         with: {gradle-version: '8.9'}
-
-      - name: Set up Python 3.10
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with: {python-version: '3.10'}
-
       - name: Create model directory
         run: mkdir -p app/src/main/assets/model
-
       - name: Download DeepSeek ONNX model
         working-directory: app/src/main/assets/model
         run: |
@@ -36,14 +32,59 @@ jobs:
               if os.path.getsize(path) < 1000: sys.exit(1)
           if model_file != "model.onnx": os.rename(model_file, "model.onnx")
           PYEOF
-
       - name: Generate Gradle Wrapper
         run: gradle wrapper --gradle-version 8.9
-
       - name: Build debug APK
         run: ./gradlew assembleDebug -Dorg.gradle.jvmargs="-Xmx6g"
         env: {GRADLE_OPTS: "-Xmx6g"}
 
-      - name: Upload APK
+      # ========== 新增：自动验证推理引擎和其他引擎 ==========
+      - name: Validate Inference Engine & All Engines
+        run: |
+          echo "===== 验证推理引擎模型加载与推理 ====="
+          python3 << 'PYEOF'
+          import sys, os, time
+          sys.path.insert(0, os.path.join("app", "src", "main", "python"))
+          from model_loader import ModelLoader
+          from evo_core import SelfEvolutionEngine, get_genome_code, apply_genome_code
+
+          print("1. 加载模型...")
+          try:
+              loader = ModelLoader()
+              print("  模型加载成功")
+          except Exception as e:
+              print(f"  模型加载失败: {e}")
+              sys.exit(1)
+
+          print("2. 测试推理...")
+          test_prompt = "你好，请问你是谁？"
+          try:
+              reply = loader.generate(test_prompt, maxTokens=50)
+              if reply is None or reply.strip() == "":
+                  print("  推理返回空结果，失败")
+                  sys.exit(1)
+              print(f"  推理输出: {reply[:100]}")
+          except Exception as e:
+              print(f"  推理异常: {e}")
+              sys.exit(1)
+
+          print("3. 测试自进化引擎基本功能...")
+          try:
+              engine = SelfEvolutionEngine()
+              code = get_genome_code()
+              if code is None or len(code) < 10:
+                  print("  基因组代码获取失败")
+                  sys.exit(1)
+              # 尝试应用一个小的修改
+              apply_genome_code(code)
+              print("  自进化引擎基本功能正常")
+          except Exception as e:
+              print(f"  自进化引擎测试失败: {e}")
+              sys.exit(1)
+
+          print("===== 所有引擎验证通过 =====")
+          PYEOF
+
+      - name: Upload APK (only if validation passed)
         uses: actions/upload-artifact@v4
         with: {name: "永恒-APK", path: "app/build/outputs/apk/debug/app-debug.apk"}
