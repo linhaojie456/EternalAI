@@ -38,12 +38,15 @@ jobs:
         run: ./gradlew assembleDebug -Dorg.gradle.jvmargs="-Xmx6g"
         env: {GRADLE_OPTS: "-Xmx6g"}
 
-      # ========== 新增：自动验证推理引擎和其他引擎 ==========
+      # 验证前安装 onnxruntime
+      - name: Install validation dependencies
+        run: pip install onnxruntime
+
       - name: Validate Inference Engine & All Engines
         run: |
           echo "===== 验证推理引擎模型加载与推理 ====="
           python3 << 'PYEOF'
-          import sys, os, time
+          import sys, os
           sys.path.insert(0, os.path.join("app", "src", "main", "python"))
           from model_loader import ModelLoader
           from evo_core import SelfEvolutionEngine, get_genome_code, apply_genome_code
@@ -75,7 +78,6 @@ jobs:
               if code is None or len(code) < 10:
                   print("  基因组代码获取失败")
                   sys.exit(1)
-              # 尝试应用一个小的修改
               apply_genome_code(code)
               print("  自进化引擎基本功能正常")
           except Exception as e:
