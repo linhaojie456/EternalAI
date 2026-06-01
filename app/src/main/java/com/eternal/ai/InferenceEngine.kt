@@ -4,7 +4,6 @@ import ai.onnxruntime.*
 import android.content.Context
 import java.io.File
 import java.nio.FloatBuffer
-import kotlinx.coroutines.*
 
 class InferenceEngine(private val context: Context) {
     val goal = "答案和问题的统一"
@@ -15,7 +14,6 @@ class InferenceEngine(private val context: Context) {
     private var session: OrtSession? = null
     private var tokenizer: TokenizerHelper? = null
     private val env = OrtEnvironment.getEnvironment()
-    private val inferenceScope = CoroutineScope(Dispatchers.Default + SupervisorJob())
 
     var isModelLoaded = false
         private set
@@ -87,7 +85,7 @@ class InferenceEngine(private val context: Context) {
     fun generate(prompt: String, maxTokens: Int = 200): String? {
         if (!isModelLoaded) return null
         val tok = tokenizer ?: return null
-        return try {
+        try {
             val inputIds = tok.encode(prompt).toMutableList()
             if (inputIds.isEmpty()) return "分词失败"
             val attentionMask = MutableList(inputIds.size) { 1L }
@@ -132,8 +130,5 @@ class InferenceEngine(private val context: Context) {
         onStatus(if (isModelLoaded) "[推理] 模型已加载" else "[推理] 加载失败: ${lastError ?: "未知"}")
     }
 
-    fun stop() {
-        session?.close()
-        inferenceScope.cancel()
-    }
+    fun stop() { session?.close() }
 }
