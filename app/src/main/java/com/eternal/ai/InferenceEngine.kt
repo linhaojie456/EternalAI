@@ -70,6 +70,21 @@ class InferenceEngine(private val context: Context) {
         return map
     }
 
+    // 从 OnnxTensor 中提取三维浮点数组（shape: [1, seqLen, vocabSize]）
+    private fun extractLogits(tensor: OnnxTensor): Array<Array<FloatArray>>? {
+        val shape = tensor.info.shape
+        if (shape.size != 3) return null
+        val seqLen = shape[1].toInt()
+        val vocabSize = shape[2].toInt()
+        val buffer = tensor.floatBuffer
+        val result = Array(seqLen) { Array(1) { FloatArray(vocabSize) } }
+        for (i in 0 until seqLen) {
+            buffer.get(result[i][0])
+        }
+        // 转换为 [1][seqLen][vocabSize] 形式
+        return arrayOf(result.map { it[0] }.toTypedArray())
+    }
+
     fun generate(prompt: String, maxTokens: Int = 200): String? {
         if (!isModelLoaded) return null
         val tok = tokenizer ?: return null
@@ -95,9 +110,11 @@ class InferenceEngine(private val context: Context) {
                 inputs.putAll(pastKeyValues)
 
                 val outputs = sess.run(inputs)
-                // 使用 .value 获取 logits
-                val logitsValue = outputs["logits"]?.value as? Array<Array<FloatArray>> ?: break
-                val nextTokenLogits = logitsValue[0][logitsValue[0].size - 1]
+
+                // 提取 logits
+                val logitsTensor = outputs["logits"] as? OnnxTensor ?: break
+                val logits = extractLogits(logitsTensor) ?: break
+                val nextTokenLogits = logits[0][logits[0].size - 1]
                 val nextToken = nextTokenLogits.indices.maxByOrNull { nextTokenLogits[it] }?.toLong() ?: break
 
                 if (nextToken == TokenizerHelper.EOS_TOKEN_ID) break
@@ -108,12 +125,12 @@ class InferenceEngine(private val context: Context) {
 
                 // 更新 past_key_values
                 val newPast = mutableMapOf<String, OnnxTensor>()
-                for ((key, onnxValue) in outputs) {
+                for ((key, value) in outputs) {
                     if (key.startsWith("present.")) {
+                        val tensor = value as? OnnxTensor ?: continue
                         val parts = key.removePrefix("present.").split(".")
                         if (parts.size >= 2) {
                             val layerIndex = parts[0].toIntOrNull() ?: continue
-                            val tensor = onnxValue as? OnnxTensor ?: continue
                             if (key.endsWith(".key")) {
                                 newPast["past_key_values.$layerIndex.key"] = tensor
                             } else if (key.endsWith(".value")) {
