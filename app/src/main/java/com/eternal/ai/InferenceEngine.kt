@@ -62,13 +62,21 @@ class InferenceEngine(private val context: Context) {
             val inputIds = tok.encode(prompt).toMutableList()
             if (inputIds.isEmpty()) return "分词失败"
             val attentionMask = MutableList(inputIds.size) { 1L }
+            // 生成 position_ids：从 0 开始递增
+            val positionIds = (0L until inputIds.size.toLong()).toMutableList()
             val generated = mutableListOf<Long>()
 
             for (i in 0 until maxTokens) {
                 val sess = session ?: break
                 val inputTensor = OnnxTensor.createTensor(env, arrayOf(inputIds.toLongArray()))
                 val maskTensor = OnnxTensor.createTensor(env, arrayOf(attentionMask.toLongArray()))
-                val outputs = sess.run(mapOf("input_ids" to inputTensor, "attention_mask" to maskTensor))
+                val posTensor = OnnxTensor.createTensor(env, arrayOf(positionIds.toLongArray()))
+
+                val outputs = sess.run(mapOf(
+                    "input_ids" to inputTensor,
+                    "attention_mask" to maskTensor,
+                    "position_ids" to posTensor
+                ))
                 val logits = outputs["logits"].get().value as Array<Array<FloatArray>>
                 val nextTokenLogits = logits[0][logits[0].size - 1]
                 val nextToken = nextTokenLogits.indices.maxByOrNull { nextTokenLogits[it] }?.toLong() ?: break
@@ -76,6 +84,7 @@ class InferenceEngine(private val context: Context) {
                 generated.add(nextToken)
                 inputIds.add(nextToken)
                 attentionMask.add(1L)
+                positionIds.add(positionIds.size.toLong())
             }
             val fullIds = (inputIds + generated).toLongArray()
             tok.decode(fullIds).removePrefix(prompt).trim()

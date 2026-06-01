@@ -21,23 +21,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 
-// DeepSeek 配色
-object DeepSeekColors {
-    val Background = Color(0xFF1A1A1A)
-    val Surface = Color(0xFF2A2A2A)
-    val UserBubble = Color(0xFF3A3A3A)
-    val AiBubble = Color(0xFF1A1A1A)
-    val Gold = Color(0xFFD4AF37)
-    val GoldLight = Color(0xFFF0D060)
-    val White = Color(0xFFF0F0F0)
-    val Gray = Color(0xFF808080)
-    val ErrorRed = Color(0xFFF44336)
-}
-
 @Composable
 fun ChatScreen(chatVM: ChatViewModel = viewModel()) {
     val state by chatVM.state.collectAsState()
     val listState = rememberLazyListState()
+    var thinkingText by remember { mutableStateOf("") }
 
     LaunchedEffect(state.messages.size) {
         if (state.messages.isNotEmpty()) {
@@ -51,11 +39,8 @@ fun ChatScreen(chatVM: ChatViewModel = viewModel()) {
             .background(DeepSeekColors.Background)
     ) {
         Column(Modifier.fillMaxSize()) {
-            // 标题栏
-            Surface(
-                color = DeepSeekColors.Surface,
-                shadowElevation = 4.dp
-            ) {
+            // 顶部标题栏
+            Surface(color = DeepSeekColors.Surface, shadowElevation = 4.dp) {
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(12.dp),
                     verticalAlignment = Alignment.CenterVertically
@@ -67,6 +52,21 @@ fun ChatScreen(chatVM: ChatViewModel = viewModel()) {
                     Text("●", color = statusColor, fontSize = 14.sp)
                     Spacer(Modifier.width(4.dp))
                     Text(state.inferenceStatus.replace("[推理] ", ""), color = statusColor, fontSize = 12.sp)
+                }
+            }
+
+            // 思考过程展示（模拟 DeepSeek 的深度思考）
+            if (thinkingText.isNotEmpty()) {
+                Surface(
+                    color = DeepSeekColors.Surface,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp)
+                ) {
+                    Text(
+                        "思考: $thinkingText",
+                        color = DeepSeekColors.GoldLight,
+                        modifier = Modifier.padding(8.dp),
+                        fontSize = 13.sp
+                    )
                 }
             }
 
@@ -111,10 +111,7 @@ fun ChatScreen(chatVM: ChatViewModel = viewModel()) {
             }
 
             // 输入栏
-            Surface(
-                color = DeepSeekColors.Surface,
-                shadowElevation = 8.dp
-            ) {
+            Surface(color = DeepSeekColors.Surface, shadowElevation = 8.dp) {
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(8.dp),
                     verticalAlignment = Alignment.CenterVertically
@@ -136,7 +133,11 @@ fun ChatScreen(chatVM: ChatViewModel = viewModel()) {
                     )
                     Spacer(Modifier.width(8.dp))
                     Button(
-                        onClick = { chatVM.sendMessage(input); input = "" },
+                        onClick = {
+                            chatVM.sendMessage(input)
+                            thinkingText = "正在分析问题..."
+                            input = ""
+                        },
                         colors = ButtonDefaults.buttonColors(containerColor = DeepSeekColors.Gold),
                         shape = RoundedCornerShape(8.dp)
                     ) {

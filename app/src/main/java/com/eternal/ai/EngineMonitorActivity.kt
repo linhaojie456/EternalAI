@@ -3,13 +3,18 @@ package com.eternal.ai
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 
 class EngineMonitorActivity : ComponentActivity() {
     @OptIn(ExperimentalMaterial3Api::class)
@@ -17,19 +22,31 @@ class EngineMonitorActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         val coreEngine = (application as MainApplication).coreEngine
         setContent {
-            Scaffold(topBar = { TopAppBar(title = { Text("十二引擎监控") }) }) { padding ->
-                LazyColumn(modifier = Modifier.padding(padding)) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(DeepSeekColors.Background)
+            ) {
+                TopAppBar(
+                    title = { Text("十二引擎监控", color = DeepSeekColors.Gold) },
+                    colors = TopAppBarDefaults.topAppBarColors(containerColor = DeepSeekColors.Surface)
+                )
+                LazyColumn(modifier = Modifier.padding(8.dp)) {
                     items(getEngineStatusList(coreEngine)) { status ->
-                        Card(modifier = Modifier.fillMaxWidth().padding(4.dp)) {
-                            Column(Modifier.padding(8.dp)) {
-                                Text("引擎: ${status.name}")
-                                Text("状态: ${status.state}")
-                                Text("目标: ${status.goal}")
+                        Card(
+                            modifier = Modifier.fillMaxWidth().padding(4.dp),
+                            colors = CardDefaults.cardColors(containerColor = DeepSeekColors.Surface),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Column(Modifier.padding(12.dp)) {
+                                Text("引擎: ${status.name}", color = DeepSeekColors.Gold, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                                Text("状态: ${status.state}", color = DeepSeekColors.White, fontSize = 14.sp)
+                                Text("目标: ${status.goal}", color = DeepSeekColors.Gray, fontSize = 13.sp)
                                 if (status.detail.isNotEmpty()) {
-                                    Text("详情: ${status.detail}", color = MaterialTheme.colorScheme.primary)
+                                    Text("详情: ${status.detail}", color = DeepSeekColors.GoldLight, fontSize = 13.sp)
                                 }
                                 if (status.error.isNotEmpty()) {
-                                    Text("错误: ${status.error}", color = MaterialTheme.colorScheme.error)
+                                    Text("错误: ${status.error}", color = DeepSeekColors.ErrorRed, fontSize = 13.sp)
                                 }
                             }
                         }

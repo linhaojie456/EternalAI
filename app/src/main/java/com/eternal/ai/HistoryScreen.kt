@@ -8,6 +8,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.eternal.ai.data.AppDatabase
 import com.eternal.ai.data.ChatMessage
@@ -31,12 +33,13 @@ fun HistoryScreen(onBack: () -> Unit) {
     }
 
     Column(modifier = Modifier.fillMaxSize().background(DeepSeekColors.Background)) {
+        // 搜索栏
         Row(modifier = Modifier.padding(8.dp)) {
             OutlinedTextField(
                 value = searchQuery,
                 onValueChange = { searchQuery = it },
                 modifier = Modifier.weight(1f),
-                placeholder = { Text("搜索对话...") },
+                placeholder = { Text("搜索对话...", color = DeepSeekColors.Gray) },
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedTextColor = DeepSeekColors.White,
                     unfocusedTextColor = DeepSeekColors.White,
@@ -45,35 +48,48 @@ fun HistoryScreen(onBack: () -> Unit) {
                 )
             )
             Spacer(Modifier.width(8.dp))
-            Button(onClick = {
-                scope.launch(Dispatchers.IO) {
-                    if (searchQuery.isNotEmpty()) {
-                        val filtered = messages.filter { it.content.contains(searchQuery, ignoreCase = true) }
-                        messages = filtered
-                    } else {
-                        dao.getAllChatMessages().collect { messages = it }
+            Button(
+                onClick = {
+                    scope.launch(Dispatchers.IO) {
+                        if (searchQuery.isNotEmpty()) {
+                            val filtered = messages.filter { it.content.contains(searchQuery, ignoreCase = true) }
+                            messages = filtered
+                        } else {
+                            dao.getAllChatMessages().collect { messages = it }
+                        }
                     }
-                }
-            }) {
-                Text("搜索")
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = DeepSeekColors.Gold)
+            ) {
+                Text("搜索", color = Color.Black, fontWeight = FontWeight.Bold)
             }
         }
+        // 历史列表
         LazyColumn {
             items(messages) { msg ->
                 Card(
                     modifier = Modifier.fillMaxWidth().padding(4.dp),
-                    colors = CardDefaults.cardColors(containerColor = DeepSeekColors.Surface)
+                    colors = CardDefaults.cardColors(containerColor = DeepSeekColors.Surface),
+                    shape = RoundedCornerShape(8.dp)
                 ) {
                     Row(Modifier.padding(8.dp)) {
-                        Text("${msg.sender}: ${msg.content}", color = DeepSeekColors.White)
-                        Spacer(Modifier.weight(1f))
-                        Button(onClick = {
-                            scope.launch(Dispatchers.IO) {
-                                dao.deleteMessage(msg)
-                                dao.getAllChatMessages().collect { messages = it }
-                            }
-                        }) {
-                            Text("删除")
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                "${msg.sender}: ${msg.content}",
+                                color = DeepSeekColors.White,
+                                fontSize = 14.sp
+                            )
+                        }
+                        Button(
+                            onClick = {
+                                scope.launch(Dispatchers.IO) {
+                                    dao.deleteMessage(msg)
+                                    dao.getAllChatMessages().collect { messages = it }
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = DeepSeekColors.ErrorRed)
+                        ) {
+                            Text("删除", color = Color.White)
                         }
                     }
                 }
