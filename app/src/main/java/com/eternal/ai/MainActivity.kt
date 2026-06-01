@@ -39,7 +39,7 @@ class MainActivity : ComponentActivity() {
                                 NavButton("历史", currentScreen == "history") { currentScreen = "history" }
                                 NavButton("引擎", false) { startActivity(Intent(this@MainActivity, EngineMonitorActivity::class.java)) }
                             }
-                            // 网络状态与开关
+                            // 唯一的网络状态与开关
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 val networkColor = if (state.isNetworkConnected) Color(0xFF4CAF50) else Color(0xFFF44336)
                                 Text(
@@ -61,7 +61,6 @@ class MainActivity : ComponentActivity() {
                             }
                         }
                     }
-                    // 内容区域
                     Box(modifier = Modifier.weight(1f)) {
                         when (currentScreen) {
                             "chat" -> ChatScreen(chatVM = chatVM)

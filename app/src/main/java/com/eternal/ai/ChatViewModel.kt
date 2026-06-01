@@ -54,8 +54,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 when (type) {
                     "inference" -> _state.value = _state.value.copy(inferenceStatus = data)
                     "info" -> {
-                        // data 内容为 "[信息] 已连接 IP: ..." 或 "[信息] 离线"
-                        val connected = !data.contains("离线")
+                        val connected = data.contains("已连接")
                         _state.value = _state.value.copy(isNetworkConnected = connected)
                     }
                     "proactive", "freedom", "spacetime" -> {

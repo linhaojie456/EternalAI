@@ -37,8 +37,7 @@ class SpacetimeEngine {
                 val y = sin(angle) * 10
                 val z = sin(angle * 2) * 5
                 currentData = "坐标 (${"%.1f".format(x)}, ${"%.1f".format(y)}, ${"%.1f".format(z)})"
-                // 每5秒更新，减少CPU占用
-                delay(5000)
+                delay(5000) // 每5秒更新，降低负载
             }
         }
     }

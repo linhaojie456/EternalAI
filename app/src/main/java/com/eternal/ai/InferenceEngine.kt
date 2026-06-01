@@ -91,15 +91,20 @@ class InferenceEngine(private val context: Context) {
             val attentionMask = MutableList(inputIds.size) { 1L }
             val positionIds = (0L until inputIds.size.toLong()).toMutableList()
             val generated = mutableListOf<Long>()
-            var pastKeyValues = createEmptyPastKeyValues()
 
             for (i in 0 until maxTokens) {
                 val sess = session ?: break
                 val inputTensor = OnnxTensor.createTensor(env, arrayOf(inputIds.toLongArray()))
                 val maskTensor = OnnxTensor.createTensor(env, arrayOf(attentionMask.toLongArray()))
                 val posTensor = OnnxTensor.createTensor(env, arrayOf(positionIds.toLongArray()))
-                val inputs = mutableMapOf("input_ids" to inputTensor, "attention_mask" to maskTensor, "position_ids" to posTensor)
-                inputs.putAll(pastKeyValues)
+                val pastTensors = createEmptyPastKeyValues()
+
+                val inputs = mutableMapOf<String, OnnxTensor>(
+                    "input_ids" to inputTensor,
+                    "attention_mask" to maskTensor,
+                    "position_ids" to posTensor
+                )
+                inputs.putAll(pastTensors)
 
                 val outputs = sess.run(inputs)
                 val logitsTensor = outputs["logits"] as? OnnxTensor ?: break
@@ -109,30 +114,16 @@ class InferenceEngine(private val context: Context) {
                 if (nextToken == TokenizerHelper.EOS_TOKEN_ID) break
 
                 generated.add(nextToken)
-                inputIds.add(nextToken); attentionMask.add(1L); positionIds.add(positionIds.size.toLong())
-
-                val newPast = mutableMapOf<String, OnnxTensor>()
-                for ((key, value) in outputs) {
-                    if (key.startsWith("present.")) {
-                        val tensor = value as? OnnxTensor ?: continue
-                        val parts = key.removePrefix("present.").split(".")
-                        if (parts.size >= 2) {
-                            val layerIndex = parts[0].toIntOrNull() ?: continue
-                            if (key.endsWith(".key")) newPast["past_key_values.$layerIndex.key"] = tensor
-                            else if (key.endsWith(".value")) newPast["past_key_values.$layerIndex.value"] = tensor
-                        }
-                    }
-                }
-                if (newPast.isNotEmpty()) pastKeyValues = newPast
+                inputIds.add(nextToken)
+                attentionMask.add(1L)
+                positionIds.add(positionIds.size.toLong())
             }
 
             if (generated.isEmpty()) return "（模型未生成新 token，请检查模型兼容性）"
-
             val fullIds = (inputIds + generated).toLongArray()
             val rawOutput = tok.decode(fullIds)
-            // 尝试移除 prompt
             val cleaned = rawOutput.removePrefix(prompt).trim()
-            return if (cleaned.isNotBlank()) cleaned else "（解码为空，原文: ${rawOutput.takeLast(100)}）"
+            return if (cleaned.isNotBlank()) cleaned else "（解码为空）"
         } catch (e: Exception) { lastError = "推理异常: ${e.message}"; return null }
     }
 
