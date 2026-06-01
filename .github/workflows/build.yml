@@ -38,26 +38,31 @@ jobs:
         run: ./gradlew assembleDebug -Dorg.gradle.jvmargs="-Xmx6g"
         env: {GRADLE_OPTS: "-Xmx6g"}
 
+      # 清理构建缓存以释放空间
+      - name: Clean build cache
+        run: rm -rf ~/.gradle/caches/transforms*
+
+      # 安装轻量验证依赖（无 PyTorch）
       - name: Install validation dependencies
-        run: pip install onnxruntime transformers tokenizers torch
+        run: pip install onnxruntime tokenizers
 
       - name: Validate model can generate output
         working-directory: app/src/main/assets/model
         run: |
           python3 << 'PYEOF'
           import onnxruntime as ort
-          from transformers import AutoTokenizer
+          from tokenizers import Tokenizer
           import numpy as np
           import os, sys
 
           print("===== 验证模型推理 =====")
           model_path = "model.onnx"
-          tokenizer_path = "."
+          tokenizer_path = "tokenizer.json"
 
           if not os.path.exists(model_path):
               print(f"模型文件 {model_path} 不存在")
               sys.exit(1)
-          if not os.path.exists(os.path.join(tokenizer_path, "tokenizer.json")):
+          if not os.path.exists(tokenizer_path):
               print("tokenizer.json 不存在")
               sys.exit(1)
 
@@ -65,7 +70,7 @@ jobs:
               print("加载 ONNX 模型...")
               session = ort.InferenceSession(model_path, providers=['CPUExecutionProvider'])
               print("加载 tokenizer...")
-              tokenizer = AutoTokenizer.from_pretrained(tokenizer_path)
+              tokenizer = Tokenizer.from_file(tokenizer_path)
           except Exception as e:
               print(f"加载失败: {e}")
               sys.exit(1)
@@ -73,12 +78,11 @@ jobs:
           print("执行测试推理...")
           prompt = "你好"
           try:
-              inputs = tokenizer(prompt, return_tensors="np")
-              input_ids = inputs["input_ids"].astype(np.int64)
-              attention_mask = inputs["attention_mask"].astype(np.int64)
+              # 编码输入
+              encoded = tokenizer.encode(prompt)
+              input_ids = np.array(encoded.ids, dtype=np.int64).reshape(1, -1)
+              attention_mask = np.ones_like(input_ids, dtype=np.int64)
               seq_len = input_ids.shape[1]
-
-              # 构造 position_ids
               position_ids = np.arange(seq_len, dtype=np.int64).reshape(1, -1)
 
               # 构造空的 past_key_values (28层, 2 KV头, 128头维)
@@ -86,10 +90,9 @@ jobs:
               num_kv_heads = 2
               head_dim = 128
               past_dict = {}
-              empty_shape = (1, num_kv_heads, 0, head_dim)
               for i in range(num_layers):
-                  past_dict[f"past_key_values.{i}.key"] = np.zeros(empty_shape, dtype=np.float32)
-                  past_dict[f"past_key_values.{i}.value"] = np.zeros(empty_shape, dtype=np.float32)
+                  past_dict[f"past_key_values.{i}.key"] = np.zeros((1, num_kv_heads, 0, head_dim), dtype=np.float32)
+                  past_dict[f"past_key_values.{i}.value"] = np.zeros((1, num_kv_heads, 0, head_dim), dtype=np.float32)
 
               ort_inputs = {
                   "input_ids": input_ids,
@@ -98,6 +101,7 @@ jobs:
               }
               ort_inputs.update(past_dict)
 
+              # 前向传播，获取 logits
               outputs = session.run(None, ort_inputs)
               logits = outputs[0]
               next_token = int(logits[0, -1, :].argmax())
@@ -106,7 +110,7 @@ jobs:
                   sys.exit(1)
               print(f"推理成功，下一个 token ID: {next_token}")
 
-              # 简单生成几个 token
+              # 循环生成几个 token，确保能持续输出
               generated = [next_token]
               current_ids = np.concatenate([input_ids, [[next_token]]], axis=1)
               current_mask = np.concatenate([attention_mask, [[1]]], axis=1)
@@ -118,17 +122,17 @@ jobs:
                       "attention_mask": current_mask,
                       "position_ids": current_pos,
                   }
-                  ort_in.update(past_dict)  # 保持空 cache
+                  ort_in.update(past_dict)
                   out = session.run(None, ort_in)
                   nxt = int(out[0][0, -1, :].argmax())
-                  if nxt == tokenizer.eos_token_id:
+                  if nxt == 151643:  # EOS token
                       break
                   generated.append(nxt)
                   current_ids = np.concatenate([current_ids, [[nxt]]], axis=1)
                   current_mask = np.concatenate([current_mask, [[1]]], axis=1)
                   current_pos = np.concatenate([current_pos, [[current_pos.shape[1]]]], axis=1)
 
-              decoded = tokenizer.decode(generated, skip_special_tokens=True)
+              decoded = tokenizer.decode(generated)
               print(f"生成的文本: {decoded}")
               if not decoded.strip():
                   print("警告：生成文本为空，但仍判定通过")
