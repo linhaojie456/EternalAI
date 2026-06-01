@@ -25,11 +25,13 @@ fun ChatScreen(chatVM: ChatViewModel = viewModel()) {
     }
 
     Column(Modifier.fillMaxSize()) {
+        // 顶部状态栏：推理引擎状态 + 网络状态
         Row(
             modifier = Modifier.fillMaxWidth().padding(8.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
+            Text(state.inferenceStatus, color = MaterialTheme.colorScheme.primary)
             val networkColor = if (state.isNetworkConnected) Color(0xFF4CAF50) else Color(0xFFF44336)
             Text("网络: ${if (state.isNetworkConnected) "已连接" else "离线"}", color = networkColor)
             Switch(

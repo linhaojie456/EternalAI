@@ -1,6 +1,8 @@
 package com.eternal.ai
 
 import android.content.Context
+import android.util.Log
+import java.io.File
 
 class CoreEngine(private val context: Context) : EngineCoordinator {
     // 核心引擎
@@ -29,7 +31,6 @@ class CoreEngine(private val context: Context) : EngineCoordinator {
 
     fun startAll(onUpdate: (String, String) -> Unit) {
         messageCallback = onUpdate
-        // 每个引擎独立启动，失败仅记录日志
         safeStart("时空引擎") { spacetime.start(this) { onUpdate("spacetime", it) } }
         safeStart("情感引擎") { emotion.start(this) { onUpdate("emotion", it) } }
         safeStart("信息引擎") { information.start(this) { onUpdate("info", it) } }
@@ -48,26 +49,33 @@ class CoreEngine(private val context: Context) : EngineCoordinator {
         try {
             block()
         } catch (e: Exception) {
-            android.util.Log.e("CoreEngine", "$name 启动失败", e)
+            Log.e("CoreEngine", "$name 启动失败", e)
+            try {
+                val logFile = File(context.filesDir, "engine_errors.log")
+                logFile.appendText("$name: ${e.message}\n")
+            } catch (_: Exception) {}
         }
     }
 
     fun stopAll() {
-        try { spacetime.stop() } catch (_: Exception) {}
-        try { emotion.stop() } catch (_: Exception) {}
-        try { information.stop() } catch (_: Exception) {}
-        try { freedom.stop() } catch (_: Exception) {}
-        try { inference.stop() } catch (_: Exception) {}
-        try { evolution.stop() } catch (_: Exception) {}
-        try { causality.stop() } catch (_: Exception) {}
-        try { selfRef.stop() } catch (_: Exception) {}
-        try { management.stop() } catch (_: Exception) {}
-        try { engineering.stop() } catch (_: Exception) {}
-        try { politics.stop() } catch (_: Exception) {}
-        try { soul.stop() } catch (_: Exception) {}
+        stopSafely { spacetime.stop() }
+        stopSafely { emotion.stop() }
+        stopSafely { information.stop() }
+        stopSafely { freedom.stop() }
+        stopSafely { inference.stop() }
+        stopSafely { evolution.stop() }
+        stopSafely { causality.stop() }
+        stopSafely { selfRef.stop() }
+        stopSafely { management.stop() }
+        stopSafely { engineering.stop() }
+        stopSafely { politics.stop() }
+        stopSafely { soul.stop() }
     }
 
-    // EngineCoordinator 实现
+    private fun stopSafely(block: () -> Unit) {
+        try { block() } catch (_: Exception) {}
+    }
+
     override fun searchOnNetwork(query: String, callback: (String) -> Unit) {
         try { information.search(query, callback) } catch (_: Exception) {}
     }

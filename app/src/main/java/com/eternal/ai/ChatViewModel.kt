@@ -14,14 +14,15 @@ import kotlinx.coroutines.launch
 data class ChatState(
     val messages: List<String> = listOf("你好，我是永恒。"),
     val isNetworkConnected: Boolean = false,
-    val isNetworkEnabled: Boolean = true
+    val isNetworkEnabled: Boolean = true,
+    val inferenceStatus: String = "推理引擎未就绪"
 )
 
 class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private val _state = MutableStateFlow(ChatState())
     val state: StateFlow<ChatState> = _state.asStateFlow()
     private val dao = AppDatabase.getInstance(application).messageDao()
-    private val coreEngine = try { CoreEngine(application) } catch (e: Exception) { null }
+    private val coreEngine = (application as MainApplication).coreEngine
     private val bridge = PythonBridge
 
     init {
@@ -36,38 +37,37 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
 
+        // 注入推理引擎，启动所有引擎
         viewModelScope.launch(Dispatchers.Default) {
             try {
-                coreEngine?.let { engine ->
-                    val python = com.chaquo.python.Python.getInstance()
-                    val module = python.getModule("evo_core")
-                    module.callAttr("set_inference_engine", engine.inference)
-                }
+                val python = com.chaquo.python.Python.getInstance()
+                val module = python.getModule("evo_core")
+                module.callAttr("set_inference_engine", coreEngine.inference)
             } catch (_: Exception) {}
 
             try {
-                coreEngine?.setGenomeAccessor(
+                coreEngine.setGenomeAccessor(
                     getter = { bridge.call("get_genome_code").toString() },
                     applier = { code -> bridge.call("apply_genome_code", code) }
                 )
             } catch (_: Exception) {}
 
-            try {
-                coreEngine?.startAll { type, data ->
-                    when (type) {
-                        "info" -> _state.value = _state.value.copy(isNetworkConnected = !data.contains("离线"))
-                        "proactive", "freedom" -> {
-                            // 主动引擎产生的对话直接存入数据库
-                            viewModelScope.launch(Dispatchers.IO) {
-                                dao.insertMessage(ChatMessage(sender = "永恒", content = data))
-                            }
-                            _state.value = _state.value.copy(
-                                messages = _state.value.messages + "永恒: $data"
-                            )
-                        }
+            coreEngine.startAll { type, data ->
+                when (type) {
+                    "inference" -> {
+                        _state.value = _state.value.copy(inferenceStatus = data)
+                    }
+                    "info" -> {
+                        val connected = !data.contains("离线")
+                        _state.value = _state.value.copy(isNetworkConnected = connected)
+                    }
+                    "proactive", "freedom", "spacetime" -> {
+                        _state.value = _state.value.copy(
+                            messages = _state.value.messages + "永恒: $data"
+                        )
                     }
                 }
-            } catch (_: Exception) {}
+            }
         }
     }
 
@@ -91,12 +91,12 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun setNetworkEnabled(enabled: Boolean) {
-        coreEngine?.setNetworkEnabled(enabled)
+        coreEngine.setNetworkEnabled(enabled)
         _state.value = _state.value.copy(isNetworkEnabled = enabled)
     }
 
     override fun onCleared() {
         super.onCleared()
-        try { coreEngine?.stopAll() } catch (_: Exception) {}
+        coreEngine.stopAll()
     }
 }

@@ -3,6 +3,7 @@ package com.eternal.ai
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.chaquo.python.PyObject
 import com.eternal.ai.data.AppDatabase
 import com.eternal.ai.data.ChatMessage
 import kotlinx.coroutines.Dispatchers
@@ -55,20 +56,16 @@ class DevViewModel(application: Application) : AndroidViewModel(application) {
 
         viewModelScope.launch(Dispatchers.Default) {
             try {
-                // 调用 Python 函数，返回元组 (new_code, error_msg)
                 val result = bridge.call("generate_code_from_chat", cmd, _state.value.genomeCode)
-                // result 可能是 Python tuple，转为列表
-                val resultList = (result as? List<*>) ?: listOf(_state.value.genomeCode, "未知结果")
+                val resultList = (result as? PyObject)?.asList() ?: listOf(_state.value.genomeCode, "未知结果")
                 val newCode = resultList.getOrNull(0)?.toString() ?: _state.value.genomeCode
                 val errorMsg = resultList.getOrNull(1)?.toString()
 
                 if (errorMsg != null && errorMsg != "None" && errorMsg.isNotEmpty()) {
-                    // 生成失败
                     _state.value = _state.value.copy(
                         devMessages = _state.value.devMessages + "永恒: 生成失败: $errorMsg"
                     )
                 } else {
-                    // 生成成功，更新编辑器
                     viewModelScope.launch(Dispatchers.IO) {
                         dao.insertMessage(ChatMessage(sender = "永恒", content = "代码已生成", isDevMode = true))
                     }
