@@ -42,12 +42,12 @@ class InferenceEngine(private val context: Context) {
             val options = OrtSession.SessionOptions()
             session = env.createSession(modelFile.absolutePath, options)
 
-            // 动态获取模型输入输出信息
+            // 动态获取模型层数
             val inputInfo = session!!.inputInfo
             var maxLayerIndex = -1
             for ((name, nodeInfo) in inputInfo) {
                 if (name.startsWith("past_key_values.")) {
-                    val shape = nodeInfo.info.shape
+                    val shape = nodeInfo.info?.shape
                     if (shape != null && shape.size >= 4) {
                         numKVHeads = shape[1].toInt()
                         headDim = shape[3].toInt()
