@@ -8,7 +8,7 @@ class TokenizerHelper {
     fun encode(text: String): LongArray {
         return try {
             val result = module.callAttr("encode", text)
-            val list = result.asList()
+            val list = result.asList() ?: return LongArray(0)
             list.map { (it as Number).toLong() }.toLongArray()
         } catch (e: Exception) {
             e.printStackTrace()
@@ -18,7 +18,8 @@ class TokenizerHelper {
 
     fun decode(ids: LongArray): String {
         return try {
-            module.callAttr("decode", ids.toList()).toString()
+            val result = module.callAttr("decode", ids.toList())
+            result?.toString() ?: ""
         } catch (e: Exception) {
             e.printStackTrace()
             ""
