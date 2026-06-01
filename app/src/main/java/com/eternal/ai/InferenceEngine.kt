@@ -56,7 +56,6 @@ class InferenceEngine(private val context: Context) {
         }
     }
 
-    // 为每层创建独立的空 KV 张量
     private fun createEmptyPastKeyValues(): Map<String, OnnxTensor> {
         val numLayers = 24
         val numKVHeads = 4
@@ -96,8 +95,8 @@ class InferenceEngine(private val context: Context) {
                 inputs.putAll(pastKeyValues)
 
                 val outputs = sess.run(inputs)
-                // 获取 logits
-                val logitsValue = outputs["logits"]?.getValue() as? Array<Array<FloatArray>> ?: break
+                // 使用 .value 获取 logits
+                val logitsValue = outputs["logits"]?.value as? Array<Array<FloatArray>> ?: break
                 val nextTokenLogits = logitsValue[0][logitsValue[0].size - 1]
                 val nextToken = nextTokenLogits.indices.maxByOrNull { nextTokenLogits[it] }?.toLong() ?: break
 
@@ -107,7 +106,7 @@ class InferenceEngine(private val context: Context) {
                 attentionMask.add(1L)
                 positionIds.add(positionIds.size.toLong())
 
-                // 更新 past_key_values：从输出中提取 present 张量
+                // 更新 past_key_values
                 val newPast = mutableMapOf<String, OnnxTensor>()
                 for ((key, onnxValue) in outputs) {
                     if (key.startsWith("present.")) {
