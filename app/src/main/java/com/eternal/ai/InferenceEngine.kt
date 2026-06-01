@@ -55,39 +55,43 @@ class InferenceEngine(private val context: Context) {
         }
     }
 
+    // 新的推理方法：一次性输入，直接获取整个输出
     fun generate(prompt: String, maxTokens: Int = 200): String? {
         if (!isModelLoaded) return null
         val tok = tokenizer ?: return null
         return try {
-            val inputIds = tok.encode(prompt).toMutableList()
-            if (inputIds.isEmpty()) return "分词失败"
-            val attentionMask = MutableList(inputIds.size) { 1L }
-            // 生成 position_ids：从 0 开始递增
-            val positionIds = (0L until inputIds.size.toLong()).toMutableList()
-            val generated = mutableListOf<Long>()
+            val inputIds = tok.encode(prompt)
+            val attentionMask = LongArray(inputIds.size) { 1L }
+            val positionIds = LongArray(inputIds.size) { it.toLong() }
 
-            for (i in 0 until maxTokens) {
-                val sess = session ?: break
-                val inputTensor = OnnxTensor.createTensor(env, arrayOf(inputIds.toLongArray()))
-                val maskTensor = OnnxTensor.createTensor(env, arrayOf(attentionMask.toLongArray()))
-                val posTensor = OnnxTensor.createTensor(env, arrayOf(positionIds.toLongArray()))
+            val inputTensor = OnnxTensor.createTensor(env, arrayOf(inputIds.toLongArray()))
+            val maskTensor = OnnxTensor.createTensor(env, arrayOf(attentionMask))
+            val posTensor = OnnxTensor.createTensor(env, arrayOf(positionIds))
 
-                val outputs = sess.run(mapOf(
-                    "input_ids" to inputTensor,
-                    "attention_mask" to maskTensor,
-                    "position_ids" to posTensor
-                ))
-                val logits = outputs["logits"].get().value as Array<Array<FloatArray>>
-                val nextTokenLogits = logits[0][logits[0].size - 1]
-                val nextToken = nextTokenLogits.indices.maxByOrNull { nextTokenLogits[it] }?.toLong() ?: break
-                if (nextToken == TokenizerHelper.EOS_TOKEN_ID) break
-                generated.add(nextToken)
-                inputIds.add(nextToken)
-                attentionMask.add(1L)
-                positionIds.add(positionIds.size.toLong())
+            val outputs = session?.run(mapOf(
+                "input_ids" to inputTensor,
+                "attention_mask" to maskTensor,
+                "position_ids" to posTensor
+            ))
+
+            val logits = outputs?.get("logits")?.value as? Array<Array<FloatArray>>
+            if (logits == null) {
+                lastError = "推理未返回有效输出"
+                return null
             }
-            val fullIds = (inputIds + generated).toLongArray()
-            tok.decode(fullIds).removePrefix(prompt).trim()
+
+            // 取每个位置的最高概率 token
+            val generatedIds = mutableListOf<Long>()
+            for (i in logits[0].indices) {
+                val probs = logits[0][i]
+                val maxIndex = probs.indices.maxByOrNull { probs[it] } ?: 0
+                generatedIds.add(maxIndex.toLong())
+            }
+
+            // 解码生成的 token
+            val result = tok.decode(generatedIds.toLongArray())
+            // 移除原始 prompt 部分
+            result.removePrefix(prompt).trim()
         } catch (e: Exception) {
             lastError = "推理异常: ${e.message}"
             null
