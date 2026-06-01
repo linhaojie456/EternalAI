@@ -11,6 +11,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
@@ -30,29 +31,28 @@ class MainActivity : ComponentActivity() {
                     "history" -> HistoryScreen(onBack = { currentScreen = "chat" })
                 }
             }
-            // 底部导航栏
+            // 底部导航栏（紧凑设计，带网络开关）
             Surface(color = DeepSeekColors.Surface, shadowElevation = 8.dp, modifier = Modifier.fillMaxWidth()) {
                 Row(
-                    modifier = Modifier.fillMaxWidth().padding(8.dp),
-                    horizontalArrangement = Arrangement.SpaceEvenly,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Button(onClick = { currentScreen = "chat" }, colors = ButtonDefaults.buttonColors(containerColor = DeepSeekColors.Surface)) {
-                        Text("聊天", color = if (currentScreen == "chat") DeepSeekColors.Gold else DeepSeekColors.Gray)
-                    }
-                    Button(onClick = { currentScreen = "dev" }, colors = ButtonDefaults.buttonColors(containerColor = DeepSeekColors.Surface)) {
-                        Text("开发", color = if (currentScreen == "dev") DeepSeekColors.Gold else DeepSeekColors.Gray)
-                    }
-                    Button(onClick = { currentScreen = "history" }, colors = ButtonDefaults.buttonColors(containerColor = DeepSeekColors.Surface)) {
-                        Text("历史", color = if (currentScreen == "history") DeepSeekColors.Gold else DeepSeekColors.Gray)
-                    }
-                    Button(onClick = { startActivity(Intent(this@MainActivity, EngineMonitorActivity::class.java)) }, colors = ButtonDefaults.buttonColors(containerColor = DeepSeekColors.Surface)) {
-                        Text("引擎", color = DeepSeekColors.Gray)
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        NavButton("聊天", currentScreen == "chat") { currentScreen = "chat" }
+                        NavButton("开发", currentScreen == "dev") { currentScreen = "dev" }
+                        NavButton("历史", currentScreen == "history") { currentScreen = "history" }
+                        NavButton("引擎", false) { startActivity(Intent(this@MainActivity, EngineMonitorActivity::class.java)) }
                     }
                     // 网络状态与开关
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         val networkColor = if (state.isNetworkConnected) Color(0xFF4CAF50) else Color(0xFFF44336)
-                        Text(if (state.isNetworkConnected) "已连接" else "离线", color = networkColor, fontSize = 12.sp)
+                        Text(
+                            text = if (state.isNetworkConnected) "已连接" else "离线",
+                            color = networkColor,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium
+                        )
                         Spacer(Modifier.width(4.dp))
                         Switch(
                             checked = state.isNetworkEnabled,
@@ -67,5 +67,17 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+}
+
+@Composable
+fun NavButton(text: String, isActive: Boolean, onClick: () -> Unit) {
+    TextButton(onClick = onClick, modifier = Modifier.padding(horizontal = 4.dp)) {
+        Text(
+            text = text,
+            color = if (isActive) DeepSeekColors.Gold else DeepSeekColors.Gray,
+            fontSize = 14.sp,
+            fontWeight = if (isActive) FontWeight.Bold else FontWeight.Normal
+        )
     }
 }
