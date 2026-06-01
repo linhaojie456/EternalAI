@@ -6,9 +6,8 @@ import androidx.lifecycle.viewModelScope
 import com.eternal.ai.data.AppDatabase
 import com.eternal.ai.data.ChatMessage
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 
 data class ChatState(
@@ -24,6 +23,9 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private val dao = AppDatabase.getInstance(application).messageDao()
     private val coreEngine = (application as MainApplication).coreEngine
     private val bridge = PythonBridge
+
+    // 用于合并引擎状态更新的共享流
+    private val engineUpdateFlow = MutableSharedFlow<Pair<String, String>>(extraBufferCapacity = 16)
 
     init {
         viewModelScope.launch(Dispatchers.IO) {
@@ -51,19 +53,27 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             } catch (_: Exception) {}
 
             coreEngine.startAll { type, data ->
-                when (type) {
-                    "inference" -> _state.value = _state.value.copy(inferenceStatus = data)
-                    "info" -> {
-                        val connected = data.contains("已连接")
-                        _state.value = _state.value.copy(isNetworkConnected = connected)
-                    }
-                    "proactive", "freedom", "spacetime" -> {
-                        _state.value = _state.value.copy(
-                            messages = _state.value.messages + "永恒: $data"
-                        )
+                engineUpdateFlow.tryEmit(type to data)
+            }
+
+            // 使用 debounce 合并短时间内的多次更新，降低UI刷新频率
+            engineUpdateFlow
+                .debounce(300)  // 300ms内只处理最后一次
+                .collect { (type, data) ->
+                    when (type) {
+                        "inference" -> _state.value = _state.value.copy(inferenceStatus = data)
+                        "info" -> {
+                            val connected = data.contains("已连接")
+                            _state.value = _state.value.copy(isNetworkConnected = connected)
+                        }
+                        "proactive", "freedom", "spacetime" -> {
+                            val newMessages = _state.value.messages + "永恒: $data"
+                            // 限制消息数量，防止无限增长
+                            val trimmed = if (newMessages.size > 100) newMessages.takeLast(50) else newMessages
+                            _state.value = _state.value.copy(messages = trimmed)
+                        }
                     }
                 }
-            }
         }
     }
 

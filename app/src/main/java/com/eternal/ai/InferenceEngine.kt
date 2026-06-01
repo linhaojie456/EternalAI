@@ -4,6 +4,7 @@ import ai.onnxruntime.*
 import android.content.Context
 import java.io.File
 import java.nio.FloatBuffer
+import kotlinx.coroutines.*
 
 class InferenceEngine(private val context: Context) {
     val goal = "答案和问题的统一"
@@ -14,6 +15,7 @@ class InferenceEngine(private val context: Context) {
     private var session: OrtSession? = null
     private var tokenizer: TokenizerHelper? = null
     private val env = OrtEnvironment.getEnvironment()
+    private val inferenceScope = CoroutineScope(Dispatchers.Default + SupervisorJob())
 
     var isModelLoaded = false
         private set
@@ -85,7 +87,7 @@ class InferenceEngine(private val context: Context) {
     fun generate(prompt: String, maxTokens: Int = 200): String? {
         if (!isModelLoaded) return null
         val tok = tokenizer ?: return null
-        try {
+        return try {
             val inputIds = tok.encode(prompt).toMutableList()
             if (inputIds.isEmpty()) return "分词失败"
             val attentionMask = MutableList(inputIds.size) { 1L }
@@ -114,9 +116,7 @@ class InferenceEngine(private val context: Context) {
                 if (nextToken == TokenizerHelper.EOS_TOKEN_ID) break
 
                 generated.add(nextToken)
-                inputIds.add(nextToken)
-                attentionMask.add(1L)
-                positionIds.add(positionIds.size.toLong())
+                inputIds.add(nextToken); attentionMask.add(1L); positionIds.add(positionIds.size.toLong())
             }
 
             if (generated.isEmpty()) return "（模型未生成新 token，请检查模型兼容性）"
@@ -131,5 +131,9 @@ class InferenceEngine(private val context: Context) {
         loadModel()
         onStatus(if (isModelLoaded) "[推理] 模型已加载" else "[推理] 加载失败: ${lastError ?: "未知"}")
     }
-    fun stop() { session?.close() }
+
+    fun stop() {
+        session?.close()
+        inferenceScope.cancel()
+    }
 }

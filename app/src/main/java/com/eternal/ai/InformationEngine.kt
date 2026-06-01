@@ -17,7 +17,7 @@ class InformationEngine {
         checkConnection()
         scope.launch {
             while (isActive) {
-                delay(30000)
+                delay(120_000)  // 2分钟检查一次，大幅降低频率
                 checkConnection()
             }
         }
@@ -47,16 +47,22 @@ class InformationEngine {
                 conn.readTimeout = 5000
                 if (conn.responseCode == 200) {
                     val ip = conn.inputStream.bufferedReader().readText()
-                    connected = true
-                    onStatus?.invoke("[信息] 已连接 IP: $ip")
+                    if (!connected) {  // 只在状态变化时通知
+                        connected = true
+                        onStatus?.invoke("[信息] 已连接 IP: $ip")
+                    }
                 } else {
-                    connected = false
-                    onStatus?.invoke("[信息] 离线")
+                    if (connected) {
+                        connected = false
+                        onStatus?.invoke("[信息] 离线")
+                    }
                 }
                 conn.disconnect()
             } catch (e: Exception) {
-                connected = false
-                onStatus?.invoke("[信息] 离线")
+                if (connected) {
+                    connected = false
+                    onStatus?.invoke("[信息] 离线")
+                }
             }
         }
     }
