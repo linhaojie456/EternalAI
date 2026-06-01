@@ -3,37 +3,29 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- 外三角形 (留足边距) -->
     <path
         android:fillColor="#00000000"
         android:pathData="M54,14 L94,86 L14,86 Z"
         android:strokeColor="#D4AF37"
         android:strokeWidth="3.5" />
-    <!-- 眼眶 (垂直椭圆) -->
     <path
         android:fillColor="#00000000"
         android:pathData="M54,40 A8,14 0,1,1 53.9,40 Z"
         android:strokeColor="#D4AF37"
         android:strokeWidth="2" />
-    <!-- 瞳孔 (较小于眼眶) -->
-    <circle
+    <path
         android:fillColor="#D4AF37"
-        android:cx="54"
-        android:cy="54"
-        android:r="5.5" />
-    <!-- 上睫毛 (弧线) -->
+        android:pathData="M48.5,54 A5.5,5.5 0,1,1 48.49,54 Z" />
     <path
         android:fillColor="#00000000"
         android:pathData="M42,42 Q54,34 66,42"
         android:strokeColor="#D4AF37"
         android:strokeWidth="2" />
-    <!-- 下睫毛 -->
     <path
         android:fillColor="#00000000"
         android:pathData="M44,66 Q54,74 64,66"
         android:strokeColor="#D4AF37"
         android:strokeWidth="2" />
-    <!-- 放射线 (从瞳孔向外) -->
     <path android:pathData="M54,45 L54,34" android:strokeColor="#D4AF37" android:strokeWidth="1.5" />
     <path android:pathData="M60,48 L68,42" android:strokeColor="#D4AF37" android:strokeWidth="1.5" />
     <path android:pathData="M63,55 L71,55" android:strokeColor="#D4AF37" android:strokeWidth="1.5" />
