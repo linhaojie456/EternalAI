@@ -18,6 +18,11 @@ class InferenceEngine(private val context: Context) {
     var isModelLoaded = false
         private set
 
+    // 动态获取的模型参数
+    private var numKVHeads: Int = 2
+    private var headDim: Int = 128
+    private var numLayers: Int = 28
+
     fun loadModel(): Boolean {
         loadStatus = "检查模型文件..."
         try {
@@ -37,6 +42,22 @@ class InferenceEngine(private val context: Context) {
             loadStatus = "创建 ONNX 会话..."
             val options = OrtSession.SessionOptions()
             session = env.createSession(modelFile.absolutePath, options)
+
+            // 动态获取模型输入输出信息
+            val inputInfo = session!!.inputInfo
+            for ((name, info) in inputInfo) {
+                if (name.startsWith("past_key_values.")) {
+                    val shape = info.shape
+                    numKVHeads = shape[1].toInt()
+                    headDim = shape[3].toInt()
+                }
+            }
+            // 计算最大层数
+            numLayers = inputInfo.keys
+                .filter { it.startsWith("past_key_values.") }
+                .map { it.split(".")[2].toInt() }
+                .maxOrNull()?.plus(1) ?: 28
+
             loadStatus = "初始化分词器..."
             tokenizer = TokenizerHelper(modelDir)
             if (tokenizer?.loadError != null) {
@@ -46,7 +67,7 @@ class InferenceEngine(private val context: Context) {
             }
             isModelLoaded = true
             lastError = null
-            loadStatus = "模型已加载 (${modelSize / (1024*1024)} MB)"
+            loadStatus = "模型已加载 (${modelSize / (1024*1024)} MB, 层数: $numLayers, KV头数: $numKVHeads, 头维: $headDim)"
             return true
         } catch (e: Exception) {
             lastError = "${e.javaClass.simpleName}: ${e.message}"
@@ -56,11 +77,7 @@ class InferenceEngine(private val context: Context) {
         }
     }
 
-    // Qwen2.5-1.5B 的 KV 头数是 2，头维度 128
     private fun createEmptyPastKeyValues(): Map<String, OnnxTensor> {
-        val numLayers = 24
-        val numKVHeads = 2  // 修正：2
-        val headDim = 128
         val shape = longArrayOf(1L, numKVHeads.toLong(), 0L, headDim.toLong())
         val map = mutableMapOf<String, OnnxTensor>()
         for (i in 0 until numLayers) {
@@ -71,7 +88,7 @@ class InferenceEngine(private val context: Context) {
         return map
     }
 
-    private fun extractLogits(tensor: OnnxTensor): Array<Array<FloatArray>>? {
+    private fun extractLogits(tensor: OnnxTensor): Array<FloatArray>? {
         val shape = tensor.info.shape
         if (shape.size != 3) return null
         val seqLen = shape[1].toInt()
@@ -81,7 +98,7 @@ class InferenceEngine(private val context: Context) {
         for (i in 0 until seqLen) {
             buffer.get(result[i])
         }
-        return arrayOf(result)
+        return result
     }
 
     fun generate(prompt: String, maxTokens: Int = 200): String? {
@@ -112,7 +129,7 @@ class InferenceEngine(private val context: Context) {
 
                 val logitsTensor = outputs["logits"] as? OnnxTensor ?: break
                 val logits = extractLogits(logitsTensor) ?: break
-                val nextTokenLogits = logits[0][logits[0].size - 1]
+                val nextTokenLogits = logits[logits.size - 1]
                 val nextToken = nextTokenLogits.indices.maxByOrNull { nextTokenLogits[it] }?.toLong() ?: break
 
                 if (nextToken == TokenizerHelper.EOS_TOKEN_ID) break
@@ -121,6 +138,7 @@ class InferenceEngine(private val context: Context) {
                 attentionMask.add(1L)
                 positionIds.add(positionIds.size.toLong())
 
+                // 更新 past_key_values
                 val newPast = mutableMapOf<String, OnnxTensor>()
                 for ((key, value) in outputs) {
                     if (key.startsWith("present.")) {

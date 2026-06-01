@@ -3,31 +3,42 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- 外圈三角形 -->
+    <!-- 外三角形 (留足边距) -->
     <path
         android:fillColor="#00000000"
-        android:pathData="M54,6 L102,96 L6,96 Z"
+        android:pathData="M54,14 L94,86 L14,86 Z"
         android:strokeColor="#D4AF37"
-        android:strokeWidth="4" />
-    <!-- 瞳孔 -->
+        android:strokeWidth="3.5" />
+    <!-- 眼眶 (垂直椭圆) -->
     <path
+        android:fillColor="#00000000"
+        android:pathData="M54,40 A8,14 0,1,1 53.9,40 Z"
+        android:strokeColor="#D4AF37"
+        android:strokeWidth="2" />
+    <!-- 瞳孔 (较小于眼眶) -->
+    <circle
         android:fillColor="#D4AF37"
-        android:pathData="M54,50 A12,12 0,1,1 53.9,50.01 Z" />
-    <!-- 上下眼睑（弧形） -->
+        android:cx="54"
+        android:cy="54"
+        android:r="5.5" />
+    <!-- 上睫毛 (弧线) -->
     <path
         android:fillColor="#00000000"
-        android:pathData="M38,54 Q54,38 70,54"
+        android:pathData="M42,42 Q54,34 66,42"
         android:strokeColor="#D4AF37"
-        android:strokeWidth="2.5" />
+        android:strokeWidth="2" />
+    <!-- 下睫毛 -->
     <path
         android:fillColor="#00000000"
-        android:pathData="M38,54 Q54,70 70,54"
+        android:pathData="M44,66 Q54,74 64,66"
         android:strokeColor="#D4AF37"
-        android:strokeWidth="2.5" />
-    <!-- 放射线 -->
-    <path android:pathData="M54,46 L54,40" android:strokeColor="#D4AF37" android:strokeWidth="1.5" />
-    <path android:pathData="M62,50 L66,46" android:strokeColor="#D4AF37" android:strokeWidth="1.5" />
-    <path android:pathData="M46,50 L42,46" android:strokeColor="#D4AF37" android:strokeWidth="1.5" />
-    <path android:pathData="M60,58 L64,62" android:strokeColor="#D4AF37" android:strokeWidth="1.5" />
-    <path android:pathData="M48,58 L44,62" android:strokeColor="#D4AF37" android:strokeWidth="1.5" />
+        android:strokeWidth="2" />
+    <!-- 放射线 (从瞳孔向外) -->
+    <path android:pathData="M54,45 L54,34" android:strokeColor="#D4AF37" android:strokeWidth="1.5" />
+    <path android:pathData="M60,48 L68,42" android:strokeColor="#D4AF37" android:strokeWidth="1.5" />
+    <path android:pathData="M63,55 L71,55" android:strokeColor="#D4AF37" android:strokeWidth="1.5" />
+    <path android:pathData="M60,62 L68,68" android:strokeColor="#D4AF37" android:strokeWidth="1.5" />
+    <path android:pathData="M48,48 L40,42" android:strokeColor="#D4AF37" android:strokeWidth="1.5" />
+    <path android:pathData="M45,55 L37,55" android:strokeColor="#D4AF37" android:strokeWidth="1.5" />
+    <path android:pathData="M48,62 L40,68" android:strokeColor="#D4AF37" android:strokeWidth="1.5" />
 </vector>
