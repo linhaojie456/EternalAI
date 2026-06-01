@@ -56,18 +56,17 @@ class InferenceEngine(private val context: Context) {
         }
     }
 
+    // 为每层创建独立的空 KV 张量
     private fun createEmptyPastKeyValues(): Map<String, OnnxTensor> {
         val numLayers = 24
         val numKVHeads = 4
         val headDim = 128
-        val emptyShape = longArrayOf(1L, numKVHeads.toLong(), 0L, headDim.toLong())
-        val buf = FloatBuffer.allocate(0)
-        val emptyTensor = OnnxTensor.createTensor(env, buf, emptyShape)
-        
+        val shape = longArrayOf(1L, numKVHeads.toLong(), 0L, headDim.toLong())
         val map = mutableMapOf<String, OnnxTensor>()
         for (i in 0 until numLayers) {
-            map["past_key_values.$i.key"] = emptyTensor
-            map["past_key_values.$i.value"] = emptyTensor
+            val buf = FloatBuffer.allocate(0)
+            map["past_key_values.$i.key"] = OnnxTensor.createTensor(env, buf, shape)
+            map["past_key_values.$i.value"] = OnnxTensor.createTensor(env, buf, shape)
         }
         return map
     }
@@ -97,8 +96,9 @@ class InferenceEngine(private val context: Context) {
                 inputs.putAll(pastKeyValues)
 
                 val outputs = sess.run(inputs)
-                val logits = (outputs["logits"]?.value as? Array<Array<FloatArray>>) ?: break
-                val nextTokenLogits = logits[0][logits[0].size - 1]
+                // 获取 logits
+                val logitsValue = outputs["logits"]?.getValue() as? Array<Array<FloatArray>> ?: break
+                val nextTokenLogits = logitsValue[0][logitsValue[0].size - 1]
                 val nextToken = nextTokenLogits.indices.maxByOrNull { nextTokenLogits[it] }?.toLong() ?: break
 
                 if (nextToken == TokenizerHelper.EOS_TOKEN_ID) break
@@ -107,17 +107,18 @@ class InferenceEngine(private val context: Context) {
                 attentionMask.add(1L)
                 positionIds.add(positionIds.size.toLong())
 
-                // 更新 past_key_values
+                // 更新 past_key_values：从输出中提取 present 张量
                 val newPast = mutableMapOf<String, OnnxTensor>()
-                for ((key, value) in outputs) {
+                for ((key, onnxValue) in outputs) {
                     if (key.startsWith("present.")) {
                         val parts = key.removePrefix("present.").split(".")
                         if (parts.size >= 2) {
                             val layerIndex = parts[0].toIntOrNull() ?: continue
+                            val tensor = onnxValue as? OnnxTensor ?: continue
                             if (key.endsWith(".key")) {
-                                newPast["past_key_values.$layerIndex.key"] = value as? OnnxTensor ?: continue
+                                newPast["past_key_values.$layerIndex.key"] = tensor
                             } else if (key.endsWith(".value")) {
-                                newPast["past_key_values.$layerIndex.value"] = value as? OnnxTensor ?: continue
+                                newPast["past_key_values.$layerIndex.value"] = tensor
                             }
                         }
                     }
