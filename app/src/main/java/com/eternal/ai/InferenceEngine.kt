@@ -126,13 +126,13 @@ class InferenceEngine(private val context: Context) {
                 if (newPast.isNotEmpty()) pastKeyValues = newPast
             }
 
-            // 如果完全没有生成新 token，返回提示
-            if (generated.isEmpty()) return "（模型未生成新内容）"
+            if (generated.isEmpty()) return "（模型未生成新 token，请检查模型兼容性）"
 
             val fullIds = (inputIds + generated).toLongArray()
             val rawOutput = tok.decode(fullIds)
+            // 尝试移除 prompt
             val cleaned = rawOutput.removePrefix(prompt).trim()
-            return if (cleaned.isNotBlank()) cleaned else "（推理输出为空，原始输出: ${rawOutput.takeLast(50)}）"
+            return if (cleaned.isNotBlank()) cleaned else "（解码为空，原文: ${rawOutput.takeLast(100)}）"
         } catch (e: Exception) { lastError = "推理异常: ${e.message}"; return null }
     }
 

@@ -25,44 +25,49 @@ class MainActivity : ComponentActivity() {
             val state by chatVM.state.collectAsState()
 
             Box(modifier = Modifier.fillMaxSize().background(DeepSeekColors.Background)) {
-                when (currentScreen) {
-                    "chat" -> ChatScreen(chatVM = chatVM)
-                    "dev" -> DevScreen()
-                    "history" -> HistoryScreen(onBack = { currentScreen = "chat" })
-                }
-            }
-            // 底部导航栏（紧凑设计，带网络开关）
-            Surface(color = DeepSeekColors.Surface, shadowElevation = 8.dp, modifier = Modifier.fillMaxWidth()) {
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        NavButton("聊天", currentScreen == "chat") { currentScreen = "chat" }
-                        NavButton("开发", currentScreen == "dev") { currentScreen = "dev" }
-                        NavButton("历史", currentScreen == "history") { currentScreen = "history" }
-                        NavButton("引擎", false) { startActivity(Intent(this@MainActivity, EngineMonitorActivity::class.java)) }
+                Column(Modifier.fillMaxSize()) {
+                    // 顶部导航栏
+                    Surface(color = DeepSeekColors.Surface, shadowElevation = 4.dp) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                NavButton("聊天", currentScreen == "chat") { currentScreen = "chat" }
+                                NavButton("开发", currentScreen == "dev") { currentScreen = "dev" }
+                                NavButton("历史", currentScreen == "history") { currentScreen = "history" }
+                                NavButton("引擎", false) { startActivity(Intent(this@MainActivity, EngineMonitorActivity::class.java)) }
+                            }
+                            // 网络状态与开关
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                val networkColor = if (state.isNetworkConnected) Color(0xFF4CAF50) else Color(0xFFF44336)
+                                Text(
+                                    text = if (state.isNetworkConnected) "已连接" else "离线",
+                                    color = networkColor,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Medium
+                                )
+                                Spacer(Modifier.width(4.dp))
+                                Switch(
+                                    checked = state.isNetworkEnabled,
+                                    onCheckedChange = { chatVM.setNetworkEnabled(it) },
+                                    modifier = Modifier.height(24.dp),
+                                    colors = SwitchDefaults.colors(
+                                        checkedTrackColor = DeepSeekColors.Gold,
+                                        uncheckedTrackColor = DeepSeekColors.Gray
+                                    )
+                                )
+                            }
+                        }
                     }
-                    // 网络状态与开关
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        val networkColor = if (state.isNetworkConnected) Color(0xFF4CAF50) else Color(0xFFF44336)
-                        Text(
-                            text = if (state.isNetworkConnected) "已连接" else "离线",
-                            color = networkColor,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Medium
-                        )
-                        Spacer(Modifier.width(4.dp))
-                        Switch(
-                            checked = state.isNetworkEnabled,
-                            onCheckedChange = { chatVM.setNetworkEnabled(it) },
-                            modifier = Modifier.height(24.dp),
-                            colors = SwitchDefaults.colors(
-                                checkedTrackColor = DeepSeekColors.Gold,
-                                uncheckedTrackColor = DeepSeekColors.Gray
-                            )
-                        )
+                    // 内容区域
+                    Box(modifier = Modifier.weight(1f)) {
+                        when (currentScreen) {
+                            "chat" -> ChatScreen(chatVM = chatVM)
+                            "dev" -> DevScreen()
+                            "history" -> HistoryScreen(onBack = { currentScreen = "chat" })
+                        }
                     }
                 }
             }
