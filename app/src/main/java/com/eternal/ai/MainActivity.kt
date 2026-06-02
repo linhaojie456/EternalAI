@@ -37,9 +37,23 @@ class MainActivity : ComponentActivity() {
                                 NavButton("聊天", currentScreen == "chat") { currentScreen = "chat" }
                                 NavButton("开发", currentScreen == "dev") { currentScreen = "dev" }
                                 NavButton("历史", currentScreen == "history") { currentScreen = "history" }
-                                NavButton("引擎", false) { startActivity(Intent(this@MainActivity, EngineMonitorActivity::class.java)) }
+                                NavButton("引擎", currentScreen == "engine") { currentScreen = "engine" }
                             }
-                            // 唯一的网络状态与开关
+                        }
+                    }
+                    // 模型状态 + 网络开关（导航栏下方）
+                    Surface(color = DeepSeekColors.Surface, shadowElevation = 2.dp) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            val statusColor = if (state.inferenceStatus.contains("已加载")) DeepSeekColors.Gold else DeepSeekColors.Gray
+                            Text(
+                                text = state.inferenceStatus.replace("[推理] ", ""),
+                                color = statusColor,
+                                fontSize = 12.sp
+                            )
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 val networkColor = if (state.isNetworkConnected) Color(0xFF4CAF50) else Color(0xFFF44336)
                                 Text(
@@ -61,11 +75,13 @@ class MainActivity : ComponentActivity() {
                             }
                         }
                     }
+                    // 内容区域
                     Box(modifier = Modifier.weight(1f)) {
                         when (currentScreen) {
                             "chat" -> ChatScreen(chatVM = chatVM)
                             "dev" -> DevScreen()
                             "history" -> HistoryScreen(onBack = { currentScreen = "chat" })
+                            "engine" -> EngineMonitorContent()
                         }
                     }
                 }
