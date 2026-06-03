@@ -55,7 +55,7 @@ class InferenceEngine(private val context: Context) {
             if (tokenizer?.loadError != null) { lastError = tokenizer?.loadError; loadStatus = "失败: $lastError"; return false }
 
             isModelLoaded = true; lastError = null
-            loadStatus = "模型已加载 (${modelSize / (1024*1024)}MB, 层:$numLayers, KV头:$numKVHeads, 维:$headDim)"
+            loadStatus = "模型已加载 (${modelSize / (1024*1024)}MB, 层:$numLayers, KV头:$numKVHeads, 维:$headDim, EOS:${tokenizer?.eosTokenId})"
             return true
         } catch (e: Exception) { lastError = "${e.javaClass.simpleName}: ${e.message}"; loadStatus = "异常: $lastError"; return false }
     }
@@ -82,17 +82,16 @@ class InferenceEngine(private val context: Context) {
         return result
     }
 
-    // 核心：渐进式推理，保留 KV Cache
     fun generate(prompt: String, maxTokens: Int = 200): String? {
         if (!isModelLoaded) return null
         val tok = tokenizer ?: return null
-        return try {
+        val eosId = tok.eosTokenId
+        try {
             val inputIds = tok.encode(prompt).toMutableList()
             if (inputIds.isEmpty()) return "分词失败"
             val attentionMask = MutableList(inputIds.size) { 1L }
             val positionIds = (0L until inputIds.size.toLong()).toMutableList()
             val generated = mutableListOf<Long>()
-
             var currentPast = createEmptyPastKeyValues()
 
             for (i in 0 until maxTokens) {
@@ -113,7 +112,7 @@ class InferenceEngine(private val context: Context) {
                 val logits = extractLogits(logitsTensor) ?: break
                 val nextTokenLogits = logits[logits.size - 1]
                 val nextToken = nextTokenLogits.indices.maxByOrNull { nextTokenLogits[it] }?.toLong() ?: break
-                if (nextToken == TokenizerHelper.EOS_TOKEN_ID) break
+                if (nextToken == eosId) break
 
                 generated.add(nextToken)
                 inputIds.add(nextToken); attentionMask.add(1L); positionIds.add(positionIds.size.toLong())
@@ -134,7 +133,10 @@ class InferenceEngine(private val context: Context) {
                 if (newPast.isNotEmpty()) currentPast = newPast
             }
 
-            if (generated.isEmpty()) return "（模型未生成新 token，请检查模型兼容性）"
+            if (generated.isEmpty()) {
+                lastError = "生成0个token，EOS=$eosId，输入长度=${inputIds.size}，可能原因：模型未正确加载或输入太短"
+                return "（模型未生成新 token，请检查模型兼容性）"
+            }
             val fullIds = (inputIds + generated).toLongArray()
             val rawOutput = tok.decode(fullIds)
             val cleaned = rawOutput.removePrefix(prompt).trim()
@@ -146,5 +148,6 @@ class InferenceEngine(private val context: Context) {
         loadModel()
         onStatus(if (isModelLoaded) "[推理] 模型已加载" else "[推理] 加载失败: ${lastError ?: "未知"}")
     }
+
     fun stop() { session?.close() }
 }

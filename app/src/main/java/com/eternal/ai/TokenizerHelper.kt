@@ -1,23 +1,22 @@
 package com.eternal.ai
 
 import android.content.Context
-import java.io.BufferedReader
 import java.io.File
-import java.io.InputStreamReader
 
 class TokenizerHelper(private val modelDir: File) {
     private val vocab = mutableMapOf<String, Long>()
     private val idToToken = mutableMapOf<Long, String>()
+    var eosTokenId: Long = 151643L  // 默认值，将从配置文件中读取
     var loadError: String? = null
         private set
 
     init {
         try {
             val tokenizerFile = File(modelDir, "tokenizer.json")
-            if (!tokenizerFile.exists()) {
-                loadError = "tokenizer.json 不存在"
-            } else {
-                // 读取 tokenizer.json 并解析 vocab
+            val configFile = File(modelDir, "tokenizer_config.json")
+            
+            // 解析 tokenizer.json 获取词表
+            if (tokenizerFile.exists()) {
                 val content = tokenizerFile.readText()
                 val vocabStart = content.indexOf("\"vocab\":")
                 if (vocabStart >= 0) {
@@ -36,7 +35,6 @@ class TokenizerHelper(private val modelDir: File) {
                             }
                         }
                         val vocabJson = sb.toString()
-                        // 解析每个 "token": id 对
                         val entries = vocabJson.split(",")
                         for (entry in entries) {
                             val colon = entry.indexOf(':')
@@ -52,8 +50,20 @@ class TokenizerHelper(private val modelDir: File) {
                         }
                     }
                 }
-                loadError = if (vocab.isEmpty()) "未解析到词表" else null
             }
+            
+            // 从 tokenizer_config.json 读取 eos_token_id
+            if (configFile.exists()) {
+                val configContent = configFile.readText()
+                val eosPattern = "\"eos_token_id\":\\s*(\\d+)".toRegex()
+                val matchResult = eosPattern.find(configContent)
+                if (matchResult != null) {
+                    val id = matchResult.groupValues[1].toLongOrNull()
+                    if (id != null) eosTokenId = id
+                }
+            }
+            
+            loadError = if (vocab.isEmpty()) "未解析到词表" else null
         } catch (e: Exception) {
             loadError = "分词器初始化失败: ${e.message}"
         }
@@ -92,9 +102,5 @@ class TokenizerHelper(private val modelDir: File) {
             }
         }
         return sb.toString()
-    }
-
-    companion object {
-        const val EOS_TOKEN_ID: Long = 151643L
     }
 }

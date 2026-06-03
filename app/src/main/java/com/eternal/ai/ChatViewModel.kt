@@ -23,8 +23,6 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private val coreEngine = (application as MainApplication).coreEngine
     private val bridge = PythonBridge
 
-    private val engineUpdateFlow = MutableSharedFlow<Pair<String, String>>(extraBufferCapacity = 16)
-
     init {
         viewModelScope.launch(Dispatchers.IO) {
             dao.getAllChatMessages().collect { dbMessages ->
@@ -38,11 +36,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             try { coreEngine.setGenomeAccessor(getter = { bridge.call("get_genome_code").toString() }, applier = { code -> bridge.call("apply_genome_code", code) }) } catch (_: Exception) {}
             try { val python = com.chaquo.python.Python.getInstance(); val module = python.getModule("evo_core"); module.callAttr("set_inference_engine", coreEngine.inference) } catch (_: Exception) {}
 
+            // 启动所有引擎，并立即处理推理和网络状态
             coreEngine.startAll { type, data ->
-                engineUpdateFlow.tryEmit(type to data)
-            }
-
-            engineUpdateFlow.debounce(300).collect { (type, data) ->
                 when (type) {
                     "inference" -> _state.value = _state.value.copy(inferenceStatus = data)
                     "info" -> {
