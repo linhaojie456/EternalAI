@@ -15,7 +15,7 @@ jobs:
         with: {python-version: '3.10'}
       - name: Create model directory
         run: mkdir -p app/src/main/assets/model
-      - name: Download DeepSeek ONNX model (with retry)
+      - name: Download DeepSeek ONNX model (corrected paths)
         working-directory: app/src/main/assets/model
         run: |
           pip install -q huggingface_hub
@@ -24,13 +24,14 @@ jobs:
           import os, sys, time
 
           repo_id = "onnx-community/DeepSeek-R1-Distill-Qwen-1.5B-ONNX"
-          files = {
-              "model_quantized.onnx": 800_000_000,
-              "tokenizer.json": 1_000_000,
-              "tokenizer_config.json": 100
-          }
+          # 该仓库中的模型文件位于 onnx/ 子目录中
+          files_to_download = [
+              ("onnx/model_quantized.onnx", 800_000_000),
+              ("tokenizer.json", 1_000_000),
+              ("tokenizer_config.json", 100)
+          ]
 
-          for fname, min_size in files.items():
+          for fname, min_size in files_to_download:
               success = False
               for attempt in range(3):
                   try:
@@ -45,14 +46,20 @@ jobs:
                           print(f"  ⚠ Size too small ({size:,}), retrying...")
                   except Exception as e:
                       print(f"  ✗ Error: {e}")
-                      time.sleep(30 * (attempt + 1))  # 阶梯等待
+                      time.sleep(30 * (attempt + 1))
               if not success:
                   print(f"Failed to download {fname}")
                   sys.exit(1)
           
-          # 重命名为 model.onnx
-          if os.path.exists("model_quantized.onnx"):
-              os.rename("model_quantized.onnx", "model.onnx")
+          # 将模型文件从子目录移动并重命名
+          if os.path.exists("onnx/model_quantized.onnx"):
+              os.rename("onnx/model_quantized.onnx", "model.onnx")
+              # 删除空的 onnx 目录
+              os.rmdir("onnx")
+          else:
+              print("model file not found after download")
+              sys.exit(1)
+          
           print("All model files downloaded successfully.")
           PYEOF
       - name: Generate Gradle Wrapper
