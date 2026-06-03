@@ -15,22 +15,45 @@ jobs:
         with: {python-version: '3.10'}
       - name: Create model directory
         run: mkdir -p app/src/main/assets/model
-      - name: Download DeepSeek ONNX model
+      - name: Download DeepSeek ONNX model (with retry)
         working-directory: app/src/main/assets/model
         run: |
           pip install -q huggingface_hub
           python3 << 'PYEOF'
-          from huggingface_hub import list_repo_files, hf_hub_download
-          import os, sys
+          from huggingface_hub import hf_hub_download
+          import os, sys, time
+
           repo_id = "onnx-community/DeepSeek-R1-Distill-Qwen-1.5B-ONNX"
-          all_files = list_repo_files(repo_id)
-          model_files = [f for f in all_files if f.endswith(".onnx") and ("model" in f or "quant" in f)]
-          if not model_files: sys.exit(1)
-          model_file = [f for f in model_files if "quant" in f.lower()][0] if any("quant" in f.lower() for f in model_files) else model_files[0]
-          for fname in [model_file, "tokenizer.json", "tokenizer_config.json"]:
-              path = hf_hub_download(repo_id, fname, local_dir=".")
-              if os.path.getsize(path) < 1000: sys.exit(1)
-          if model_file != "model.onnx": os.rename(model_file, "model.onnx")
+          files = {
+              "model_quantized.onnx": 800_000_000,
+              "tokenizer.json": 1_000_000,
+              "tokenizer_config.json": 100
+          }
+
+          for fname, min_size in files.items():
+              success = False
+              for attempt in range(3):
+                  try:
+                      print(f"Downloading {fname} (attempt {attempt+1})...")
+                      path = hf_hub_download(repo_id, fname, local_dir=".")
+                      size = os.path.getsize(path)
+                      if size >= min_size:
+                          print(f"  ✓ {fname}: {size:,} bytes")
+                          success = True
+                          break
+                      else:
+                          print(f"  ⚠ Size too small ({size:,}), retrying...")
+                  except Exception as e:
+                      print(f"  ✗ Error: {e}")
+                      time.sleep(30 * (attempt + 1))  # 阶梯等待
+              if not success:
+                  print(f"Failed to download {fname}")
+                  sys.exit(1)
+          
+          # 重命名为 model.onnx
+          if os.path.exists("model_quantized.onnx"):
+              os.rename("model_quantized.onnx", "model.onnx")
+          print("All model files downloaded successfully.")
           PYEOF
       - name: Generate Gradle Wrapper
         run: gradle wrapper --gradle-version 8.9
