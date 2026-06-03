@@ -82,29 +82,31 @@ class InferenceEngine(private val context: Context) {
         return result
     }
 
+    // 核心：渐进式推理，保留 KV Cache
     fun generate(prompt: String, maxTokens: Int = 200): String? {
         if (!isModelLoaded) return null
         val tok = tokenizer ?: return null
-        try {
+        return try {
             val inputIds = tok.encode(prompt).toMutableList()
             if (inputIds.isEmpty()) return "分词失败"
             val attentionMask = MutableList(inputIds.size) { 1L }
             val positionIds = (0L until inputIds.size.toLong()).toMutableList()
             val generated = mutableListOf<Long>()
 
+            var currentPast = createEmptyPastKeyValues()
+
             for (i in 0 until maxTokens) {
                 val sess = session ?: break
                 val inputTensor = OnnxTensor.createTensor(env, arrayOf(inputIds.toLongArray()))
                 val maskTensor = OnnxTensor.createTensor(env, arrayOf(attentionMask.toLongArray()))
                 val posTensor = OnnxTensor.createTensor(env, arrayOf(positionIds.toLongArray()))
-                val pastTensors = createEmptyPastKeyValues()
 
                 val inputs = mutableMapOf<String, OnnxTensor>(
                     "input_ids" to inputTensor,
                     "attention_mask" to maskTensor,
                     "position_ids" to posTensor
                 )
-                inputs.putAll(pastTensors)
+                inputs.putAll(currentPast)
 
                 val outputs = sess.run(inputs)
                 val logitsTensor = outputs["logits"] as? OnnxTensor ?: break
@@ -115,6 +117,21 @@ class InferenceEngine(private val context: Context) {
 
                 generated.add(nextToken)
                 inputIds.add(nextToken); attentionMask.add(1L); positionIds.add(positionIds.size.toLong())
+
+                // 更新 KV Cache
+                val newPast = mutableMapOf<String, OnnxTensor>()
+                for ((key, value) in outputs) {
+                    if (key.startsWith("present.")) {
+                        val tensor = value as? OnnxTensor ?: continue
+                        val parts = key.removePrefix("present.").split(".")
+                        if (parts.size >= 2) {
+                            val layerIndex = parts[0].toIntOrNull() ?: continue
+                            if (key.endsWith(".key")) newPast["past_key_values.$layerIndex.key"] = tensor
+                            else if (key.endsWith(".value")) newPast["past_key_values.$layerIndex.value"] = tensor
+                        }
+                    }
+                }
+                if (newPast.isNotEmpty()) currentPast = newPast
             }
 
             if (generated.isEmpty()) return "（模型未生成新 token，请检查模型兼容性）"
@@ -129,6 +146,5 @@ class InferenceEngine(private val context: Context) {
         loadModel()
         onStatus(if (isModelLoaded) "[推理] 模型已加载" else "[推理] 加载失败: ${lastError ?: "未知"}")
     }
-
     fun stop() { session?.close() }
 }

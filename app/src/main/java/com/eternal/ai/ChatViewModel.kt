@@ -6,7 +6,6 @@ import androidx.lifecycle.viewModelScope
 import com.eternal.ai.data.AppDatabase
 import com.eternal.ai.data.ChatMessage
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 
@@ -24,69 +23,47 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private val coreEngine = (application as MainApplication).coreEngine
     private val bridge = PythonBridge
 
-    // 用于合并引擎状态更新的共享流
     private val engineUpdateFlow = MutableSharedFlow<Pair<String, String>>(extraBufferCapacity = 16)
 
     init {
         viewModelScope.launch(Dispatchers.IO) {
             dao.getAllChatMessages().collect { dbMessages ->
                 if (dbMessages.isNotEmpty()) {
-                    _state.value = _state.value.copy(
-                        messages = dbMessages.map { "${it.sender}: ${it.content}" }
-                    )
+                    _state.value = _state.value.copy(messages = dbMessages.map { "${it.sender}: ${it.content}" })
                 }
             }
         }
 
         viewModelScope.launch(Dispatchers.Default) {
-            try {
-                val python = com.chaquo.python.Python.getInstance()
-                val module = python.getModule("evo_core")
-                module.callAttr("set_inference_engine", coreEngine.inference)
-            } catch (_: Exception) {}
-
-            try {
-                coreEngine.setGenomeAccessor(
-                    getter = { bridge.call("get_genome_code").toString() },
-                    applier = { code -> bridge.call("apply_genome_code", code) }
-                )
-            } catch (_: Exception) {}
+            try { coreEngine.setGenomeAccessor(getter = { bridge.call("get_genome_code").toString() }, applier = { code -> bridge.call("apply_genome_code", code) }) } catch (_: Exception) {}
+            try { val python = com.chaquo.python.Python.getInstance(); val module = python.getModule("evo_core"); module.callAttr("set_inference_engine", coreEngine.inference) } catch (_: Exception) {}
 
             coreEngine.startAll { type, data ->
                 engineUpdateFlow.tryEmit(type to data)
             }
 
-            // 使用 debounce 合并短时间内的多次更新，降低UI刷新频率
-            engineUpdateFlow
-                .debounce(300)  // 300ms内只处理最后一次
-                .collect { (type, data) ->
-                    when (type) {
-                        "inference" -> _state.value = _state.value.copy(inferenceStatus = data)
-                        "info" -> {
-                            val connected = data.contains("已连接")
-                            _state.value = _state.value.copy(isNetworkConnected = connected)
-                        }
-                        "proactive", "freedom", "spacetime" -> {
-                            val newMessages = _state.value.messages + "永恒: $data"
-                            // 限制消息数量，防止无限增长
-                            val trimmed = if (newMessages.size > 100) newMessages.takeLast(50) else newMessages
-                            _state.value = _state.value.copy(messages = trimmed)
-                        }
+            engineUpdateFlow.debounce(300).collect { (type, data) ->
+                when (type) {
+                    "inference" -> _state.value = _state.value.copy(inferenceStatus = data)
+                    "info" -> {
+                        val connected = data.contains("已连接")
+                        _state.value = _state.value.copy(isNetworkConnected = connected)
+                    }
+                    "proactive", "freedom", "spacetime" -> {
+                        val newMessages = _state.value.messages + "永恒: $data"
+                        val trimmed = if (newMessages.size > 100) newMessages.takeLast(50) else newMessages
+                        _state.value = _state.value.copy(messages = trimmed)
                     }
                 }
+            }
         }
     }
 
     fun sendMessage(text: String) {
         viewModelScope.launch(Dispatchers.IO) { dao.insertMessage(ChatMessage(sender = "造物主", content = text)) }
         _state.value = _state.value.copy(messages = _state.value.messages + "造物主: $text")
-
         viewModelScope.launch(Dispatchers.Default) {
-            val reply = try {
-                bridge.call("chat_reply", text)?.toString() ?: "推理引擎未响应"
-            } catch (e: Exception) {
-                "推理出错: ${e.message}"
-            }
+            val reply = try { bridge.call("chat_reply", text)?.toString() ?: "推理引擎未响应" } catch (e: Exception) { "推理出错: ${e.message}" }
             viewModelScope.launch(Dispatchers.IO) { dao.insertMessage(ChatMessage(sender = "永恒", content = reply)) }
             _state.value = _state.value.copy(messages = _state.value.messages + "永恒: $reply")
         }
@@ -97,8 +74,5 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         _state.value = _state.value.copy(isNetworkEnabled = enabled)
     }
 
-    override fun onCleared() {
-        super.onCleared()
-        coreEngine.stopAll()
-    }
+    override fun onCleared() { super.onCleared(); coreEngine.stopAll() }
 }
