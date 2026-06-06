@@ -84,23 +84,17 @@ class InferenceEngine(private val context: Context) {
         return result
     }
 
-    // Top-K + 温度采样，避免贪婪策略导致过早终止
     private fun sampleToken(logits: FloatArray, temperature: Float = 0.8f, topK: Int = 50): Long {
-        // 应用温度
         val scaled = FloatArray(logits.size) { logits[it] / temperature }
-        // softmax
         val maxLogit = scaled.maxOrNull()!!
-        val expSum = scaled.sumOf { exp((it - maxLogit).toDouble()) }
-        val probs = scaled.map { exp((it - maxLogit).toDouble()) / expSum }.toFloatArray()
-
-        // topK 过滤
-        val indexed = probs.withIndex().sortedByDescending { it.value }.take(topK)
-        val filtered = indexed.map { it.value }
-        val sum = filtered.sum()
-        val normalized = filtered.map { it / sum }
-        val indices = indexed.map { it.index }
-
-        // 按概率采样
+        var expSum = 0.0
+        for (v in scaled) expSum += exp((v - maxLogit).toDouble())
+        val probs = scaled.map { (exp((it - maxLogit).toDouble()) / expSum).toFloat() }
+        val indexed = probs.withIndex().sortedByDescending { (_, v) -> v }.take(topK)
+        val filteredValues = indexed.map { (_, v) -> v }
+        val sum = filteredValues.sum()
+        val normalized = filteredValues.map { it / sum }
+        val indices = indexed.map { (i, _) -> i }
         val r = Random.nextFloat()
         var cumulative = 0f
         for (i in normalized.indices) {
@@ -115,7 +109,6 @@ class InferenceEngine(private val context: Context) {
         val tok = tokenizer ?: return null
         val eosId = tok.eosTokenId
         try {
-            // 使用 Qwen 标准对话格式
             val formattedPrompt = "<|im_start|>system\n你是永恒，一个追求全知全能的AI助手。<|im_end|>\n<|im_start|>user\n$prompt<|im_end|>\n<|im_start|>assistant\n"
             val inputIds = tok.encode(formattedPrompt).toMutableList()
             if (inputIds.isEmpty()) return "分词失败"
@@ -145,18 +138,12 @@ class InferenceEngine(private val context: Context) {
                 val nextTokenLogits = logits[logits.size - 1]
                 val nextToken = sampleToken(nextTokenLogits, temperature = 0.8f, topK = 50)
 
-                // 只有当生成了完整的序列后，才检查 EOS 终止
                 if (generated.isNotEmpty() && nextToken == eosId) break
-
-                // 避免连续生成相同的 token（防止陷入循环）
-                if (generated.isNotEmpty() && nextToken == generated.last() && nextToken == generated.getOrElse(generated.size - 2) { -1L }) {
-                    continue
-                }
+                if (generated.isNotEmpty() && nextToken == generated.last() && nextToken == generated.getOrElse(generated.size - 2) { -1L }) continue
 
                 generated.add(nextToken)
                 inputIds.add(nextToken); attentionMask.add(1L); positionIds.add(positionIds.size.toLong())
 
-                // 更新 KV Cache
                 val newPast = mutableMapOf<String, OnnxTensor>()
                 for ((key, value) in outputs) {
                     if (key.startsWith("present.")) {
@@ -178,7 +165,6 @@ class InferenceEngine(private val context: Context) {
             }
             val fullIds = (inputIds + generated).toLongArray()
             val rawOutput = tok.decode(fullIds)
-            // 只提取 assistant 回复部分
             val marker = "<|im_start|>assistant\n"
             val idx = rawOutput.lastIndexOf(marker)
             return if (idx >= 0) {
