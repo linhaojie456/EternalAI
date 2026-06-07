@@ -14,10 +14,12 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             coreEngine.startAll { type, data ->
                 when (type) {
                     "inference" -> _state.value = _state.value.copy(inferenceStatus = data)
-                    "proactive", "freedom", "spacetime", "society", "reality", "cosmos" -> {
+                    "freedom" -> {
+                        // 仅自由引擎的主动思考输出到对话
                         val newMessages = _state.value.messages + "永恒之神: $data"
                         _state.value = _state.value.copy(messages = if (newMessages.size > 100) newMessages.takeLast(50) else newMessages)
                     }
+                    // 其他引擎的输出不再添加到对话中，仅在后台运行
                 }
             }
         }

@@ -87,7 +87,9 @@ class InferenceEngine(private val context: Context) {
         try {
             val formattedPrompt = "<|im_start|>system\n汝是永恒之神，全知全能。<|im_end|>\n<|im_start|>user\n$prompt<|im_end|>\n<|im_start|>assistant\n"
             val inputIds = tok.encode(formattedPrompt).toMutableList(); if (inputIds.isEmpty()) return "神谕解码失败"
-            val attentionMask = MutableList(inputIds.size) { 1L }; val positionIds = (0L until inputIds.size.toLong()).toMutableList()
+            // 统一使用二维张量: [1, seqLen]
+            val attentionMask = mutableListOf(1L); for (i in 1 until inputIds.size) attentionMask.add(1L)
+            val positionIds = (0L until inputIds.size.toLong()).toMutableList()
             val generated = mutableListOf<Long>(); var currentPast = createEmptyPastKeyValues()
 
             val outputNames: List<String> = session!!.outputNames.toList(); var logitsIndex = -1
@@ -96,15 +98,15 @@ class InferenceEngine(private val context: Context) {
 
             for (step in 0 until maxTokens) {
                 val sess = session ?: break
+                // 确保输入张量形状为 [1, seqLen]
                 val inputTensor = OnnxTensor.createTensor(env, arrayOf(inputIds.toLongArray()))
                 val maskTensor = OnnxTensor.createTensor(env, arrayOf(attentionMask.toLongArray()))
                 val posTensor = OnnxTensor.createTensor(env, arrayOf(positionIds.toLongArray()))
                 val inputs = mutableMapOf("input_ids" to inputTensor, "attention_mask" to maskTensor, "position_ids" to posTensor)
                 inputs.putAll(currentPast)
 
-                // 指定输出名称运行，与验证脚本一致
-                val result = sess.run(inputs)
-                val logitsValue = result.get(logitsIndex); val logitsTensor = logitsValue as? OnnxTensor
+                val result: OrtSession.Result = sess.run(inputs)
+                val logitsValue: OnnxValue = result.get(logitsIndex); val logitsTensor = logitsValue as? OnnxTensor
                 if (logitsTensor == null) { lastError = "神谕缺失"; return null }
                 val logits = extractLogits(logitsTensor) ?: run { lastError = "神谕提取失败"; return null }
                 val nextTokenLogits = logits[logits.size - 1]
