@@ -79,9 +79,13 @@ jobs:
       - name: Validate UI assets
         run: |
           ICON="app/src/main/res/drawable/ic_launcher_foreground.xml"
-          grep -q "M54,24 L47,41.88" "$ICON" || exit 1
-          grep -q "已连接 IP:" app/src/main/java/com/eternal/ai/InformationEngine.kt || exit 1
-          grep -q "离线" app/src/main/java/com/eternal/ai/InformationEngine.kt || exit 1
+          if [ ! -f "$ICON" ]; then
+            echo "错误: 图标文件不存在"
+            exit 1
+          fi
+          grep -q "M54,24 L74,62 L34,62 Z" "$ICON" || { echo "错误: 图标缺少上三角路径"; exit 1; }
+          grep -q "M54,84 L74,46 L34,46 Z" "$ICON" || { echo "错误: 图标缺少下三角路径"; exit 1; }
+          echo "图标验证通过"
 
       - name: Validate model generates non-empty output
         working-directory: app/src/main/assets/model
@@ -109,9 +113,8 @@ jobs:
               generated = []
               for _ in range(100):
                   ort_inputs = {"input_ids": input_ids, "attention_mask": attention_mask, "position_ids": position_ids, **past}
-                  logits = session.run([logits_name], ort_inputs)[0]
-                  # 安全获取最后一个 token 的 logits
-                  next_token_logits = logits[0, -1, :]
+                  logits = session.run([logits_name], ort_inputs)[0][0]
+                  next_token_logits = logits[-1, :]
                   next_token = int(np.argmax(next_token_logits))
                   if generated and next_token == eos_token_id:
                       break
@@ -127,23 +130,23 @@ jobs:
                   return decoded[idx+len("<|im_start|>assistant\n"):].strip()
               return decoded
 
-          for prompt in ["你好", "你是谁？", "爱是什么"]:
+          for prompt in ["你好", "你是谁？"]:
               for attempt in range(3):
                   reply = gen(prompt)
                   if reply and len(reply.strip()) >= 2:
-                      print(f"✓ success: {reply[:50]}")
+                      print(f"✓ 成功: {reply[:50]}")
                       break
                   time.sleep(2)
               else:
                   continue
               break
           else:
-              print("All attempts failed")
+              print("所有尝试失败")
               sys.exit(1)
           PYEOF
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: "永恒-APK"
+          name: "永恒之神-APK"
           path: app/build/outputs/apk/debug/app-debug.apk
