@@ -1,12 +1,10 @@
 <resources>
     <style name="AppTheme" parent="Theme.AppCompat.Light.NoActionBar">
-        <item name="colorPrimary">@color/splash_background</item>
-        <item name="colorPrimaryDark">@color/splash_background</item>
-        <item name="colorAccent">@color/splash_background</item>
+        <item name="colorPrimary">#1A1A1A</item>
+        <item name="colorPrimaryDark">#1A1A1A</item>
     </style>
     <style name="SplashTheme" parent="AppTheme">
-        <item name="android:windowBackground">@color/splash_background</item>
-        <item name="android:statusBarColor">@color/splash_background</item>
-        <item name="android:navigationBarColor">@color/splash_background</item>
+        <item name="android:windowBackground">#1A1A1A</item>
+        <item name="android:statusBarColor">#1A1A1A</item>
     </style>
 </resources>
