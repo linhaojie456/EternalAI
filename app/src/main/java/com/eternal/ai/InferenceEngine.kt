@@ -116,18 +116,16 @@ class InferenceEngine(private val context: Context) {
             val generated = mutableListOf<Long>()
             var currentPast = createEmptyPastKeyValues()
 
-            // 使用 session.outputNames 获取所有输出名称
+            // 获取输出名称列表
             val outputNames = session!!.outputNames
-            var logitsOutputName: String? = null
-            for (name in outputNames) {
-                if (name.contains("logits", ignoreCase = true)) {
-                    logitsOutputName = name
+            var logitsOutputIndex = -1
+            for (i in outputNames.indices) {
+                if (outputNames[i].contains("logits", ignoreCase = true)) {
+                    logitsOutputIndex = i
                     break
                 }
             }
-            if (logitsOutputName == null && outputNames.isNotEmpty()) {
-                logitsOutputName = outputNames[0]
-            }
+            if (logitsOutputIndex == -1) logitsOutputIndex = 0
 
             for (i in 0 until maxTokens) {
                 val sess = session ?: break
@@ -142,11 +140,10 @@ class InferenceEngine(private val context: Context) {
                 )
                 inputs.putAll(currentPast)
 
-                val outputs = sess.run(inputs)
-                // 通过名称索引获取 logits
-                val logitsTensor = outputs[logitsOutputName] as? OnnxTensor
+                val outputs = sess.run(inputs)  // 返回 List<OnnxValue>，顺序与 outputNames 一致
+                val logitsTensor = outputs[logitsOutputIndex] as? OnnxTensor
                 if (logitsTensor == null) {
-                    lastError = "输出中无logits张量，输出名称: ${outputNames.joinToString()}"
+                    lastError = "输出中无logits张量"
                     return null
                 }
                 val logits = extractLogits(logitsTensor)
@@ -162,9 +159,10 @@ class InferenceEngine(private val context: Context) {
 
                 // 更新 past_key_values
                 val newPast = mutableMapOf<String, OnnxTensor>()
-                for (name in outputNames) {
+                for (idx in outputNames.indices) {
+                    val name = outputNames[idx]
                     if (name.startsWith("present.")) {
-                        val tensor = outputs[name] as? OnnxTensor ?: continue
+                        val tensor = outputs[idx] as? OnnxTensor ?: continue
                         val parts = name.removePrefix("present.").split(".")
                         if (parts.size >= 2) {
                             val layerIndex = parts[0].toIntOrNull() ?: continue
@@ -177,7 +175,7 @@ class InferenceEngine(private val context: Context) {
             }
 
             if (generated.isEmpty()) {
-                lastError = "生成0个token，EOS=$eosId，输入长度=${inputIds.size}"
+                lastError = "生成0个token"
                 return null
             }
             val fullIds = (inputIds + generated).toLongArray()
