@@ -129,7 +129,19 @@ jobs:
               print(f"加载失败: {e}")
               sys.exit(1)
 
-          # 从 tokenizer_config.json 读取 eos_token_id
+          # 获取输出名称
+          output_names = [o.name for o in session.get_outputs()]
+          print(f"模型输出列表: {output_names}")
+          logits_name = None
+          for name in output_names:
+              if "logits" in name.lower():
+                  logits_name = name
+                  break
+          if logits_name is None and output_names:
+              logits_name = output_names[0]  # fallback
+          print(f"使用 logits 输出名: {logits_name}")
+
+          # 读取 eos_token_id
           eos_token_id = 151643
           config_path = "tokenizer_config.json"
           if os.path.exists(config_path):
@@ -141,7 +153,6 @@ jobs:
           def generate_reply(prompt):
               formatted = f"<|im_start|>system\n你是永恒，一个追求全知全能的AI助手。<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n"
               enc = tokenizer.encode(formatted)
-              # 关键修复：使用 reshape(1, -1) 确保 2D 形状
               input_ids = np.array(enc.ids, dtype=np.int64).reshape(1, -1)
               seq_len = input_ids.shape[1]
               attention_mask = np.ones((1, seq_len), dtype=np.int64)
@@ -162,19 +173,12 @@ jobs:
                       "position_ids": position_ids,
                   }
                   ort_inputs.update(past_dict)
-                  outputs = session.run(None, ort_inputs)
-
-                  logits_tensor = None
-                  for k, v in outputs.items():
-                      if "logits" in k.lower():
-                          logits_tensor = v
-                          break
-                  if logits_tensor is None:
-                      print(f"错误: 输出中找不到 logits，可用输出: {list(outputs.keys())}")
-                      return None
-
-                  logits = logits_tensor[0]
+                  # 使用指定输出名运行
+                  outputs = session.run([logits_name], ort_inputs)
+                  logits_tensor = outputs[0]  # 第一个输出就是 logits
+                  logits = logits_tensor[0]   # batch=0
                   next_token_logits = logits[-1, :]
+
                   temperature = 0.8
                   top_k = 50
                   scaled = next_token_logits / temperature
@@ -189,7 +193,6 @@ jobs:
                   if generated and next_token == eos_token_id:
                       break
                   generated.append(int(next_token))
-                  # 将新 token 追加到现有序列
                   input_ids = np.concatenate([input_ids, [[next_token]]], axis=1)
                   attention_mask = np.concatenate([attention_mask, [[1]]], axis=1)
                   position_ids = np.concatenate([position_ids, [[position_ids.shape[1]]]], axis=1)
