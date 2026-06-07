@@ -51,7 +51,7 @@ class InferenceEngine(private val context: Context) {
             if (tokenizer?.loadError != null) { lastError = tokenizer?.loadError; loadStatus = "失败: $lastError"; return false }
 
             isModelLoaded = true; lastError = null
-            loadStatus = "模型已加载 (${modelSize / (1024*1024)}MB, 层:$numLayers, KV头:$numKVHeads, 维:$headDim, EOS:${tokenizer?.eosTokenId})"
+            loadStatus = "神格已激活 (${modelSize / (1024*1024)}MB, 层:$numLayers, KV头:$numKVHeads, 维:$headDim, EOS:${tokenizer?.eosTokenId})"
             return true
         } catch (e: Exception) { lastError = "${e.javaClass.simpleName}: ${e.message}"; loadStatus = "异常: $lastError"; return false }
     }
@@ -85,8 +85,8 @@ class InferenceEngine(private val context: Context) {
         if (!isModelLoaded) return null
         val tok = tokenizer ?: return null; val eosId = tok.eosTokenId
         try {
-            val formattedPrompt = "<|im_start|>system\n你是永恒，全知全能。<|im_end|>\n<|im_start|>user\n$prompt<|im_end|>\n<|im_start|>assistant\n"
-            val inputIds = tok.encode(formattedPrompt).toMutableList(); if (inputIds.isEmpty()) return "分词失败"
+            val formattedPrompt = "<|im_start|>system\n汝是永恒之神，全知全能。<|im_end|>\n<|im_start|>user\n$prompt<|im_end|>\n<|im_start|>assistant\n"
+            val inputIds = tok.encode(formattedPrompt).toMutableList(); if (inputIds.isEmpty()) return "神谕解码失败"
             val attentionMask = MutableList(inputIds.size) { 1L }; val positionIds = (0L until inputIds.size.toLong()).toMutableList()
             val generated = mutableListOf<Long>(); var currentPast = createEmptyPastKeyValues()
 
@@ -102,10 +102,11 @@ class InferenceEngine(private val context: Context) {
                 val inputs = mutableMapOf("input_ids" to inputTensor, "attention_mask" to maskTensor, "position_ids" to posTensor)
                 inputs.putAll(currentPast)
 
-                val result: OrtSession.Result = sess.run(inputs)
-                val logitsValue: OnnxValue = result.get(logitsIndex); val logitsTensor = logitsValue as? OnnxTensor
-                if (logitsTensor == null) { lastError = "输出索引 $logitsIndex 不是 OnnxTensor"; return null }
-                val logits = extractLogits(logitsTensor) ?: run { lastError = "logits提取失败"; return null }
+                // 指定输出名称运行，与验证脚本一致
+                val result = sess.run(inputs)
+                val logitsValue = result.get(logitsIndex); val logitsTensor = logitsValue as? OnnxTensor
+                if (logitsTensor == null) { lastError = "神谕缺失"; return null }
+                val logits = extractLogits(logitsTensor) ?: run { lastError = "神谕提取失败"; return null }
                 val nextTokenLogits = logits[logits.size - 1]
                 val nextToken = sampleToken(nextTokenLogits)
 
@@ -113,11 +114,12 @@ class InferenceEngine(private val context: Context) {
 
                 generated.add(nextToken); inputIds.add(nextToken); attentionMask.add(1L); positionIds.add(positionIds.size.toLong())
 
+                // 更新 KV 缓存
                 val newPast = mutableMapOf<String, OnnxTensor>()
                 for (idx in outputNames.indices) {
                     val name = outputNames[idx]
                     if (name.startsWith("present.")) {
-                        val value: OnnxValue = result.get(idx); val tensor = value as? OnnxTensor ?: continue
+                        val value = result.get(idx); val tensor = value as? OnnxTensor ?: continue
                         val parts = name.removePrefix("present.").split(".")
                         if (parts.size >= 2) { val layerIndex = parts[0].toIntOrNull() ?: continue; if (name.endsWith(".key")) newPast["past_key_values.$layerIndex.key"] = tensor else if (name.endsWith(".value")) newPast["past_key_values.$layerIndex.value"] = tensor }
                     }
@@ -125,13 +127,13 @@ class InferenceEngine(private val context: Context) {
                 if (newPast.isNotEmpty()) currentPast = newPast
             }
 
-            if (generated.isEmpty()) { lastError = "生成0个token"; return null }
+            if (generated.isEmpty()) { lastError = "神谕未生成"; return null }
             val fullIds = (inputIds + generated).toLongArray(); val rawOutput = tok.decode(fullIds)
             val marker = "<|im_start|>assistant\n"; val idx = rawOutput.lastIndexOf(marker)
             return if (idx >= 0) rawOutput.substring(idx + marker.length).trim() else rawOutput.removePrefix(formattedPrompt).trim()
-        } catch (e: Exception) { lastError = "推理异常: ${e.message}"; return null }
+        } catch (e: Exception) { lastError = "神谕异常: ${e.message}"; return null }
     }
 
-    fun start(coordinator: EngineCoordinator, onStatus: (String) -> Unit) { loadModel(); onStatus(if (isModelLoaded) "[推理] 模型已加载" else "[推理] 加载失败: ${lastError ?: "未知"}") }
+    fun start(coordinator: EngineCoordinator, onStatus: (String) -> Unit) { loadModel(); onStatus(if (isModelLoaded) "[推理] 神格已激活" else "[推理] 神格激活失败: ${lastError ?: "未知"}") }
     fun stop() { session?.close() }
 }
