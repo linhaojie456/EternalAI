@@ -16,6 +16,7 @@ class InferenceEngine(private val context: Context) {
     private var session: OrtSession? = null
     private var tokenizer: TokenizerHelper? = null
     private val env = OrtEnvironment.getEnvironment()
+    private var logitsOutputName: String = "logits"
 
     var isModelLoaded = false
         private set
@@ -34,6 +35,17 @@ class InferenceEngine(private val context: Context) {
             if (modelSize < 1_000_000) { lastError = "模型文件异常小: $modelSize 字节"; loadStatus = "失败: $lastError"; return false }
             val options = OrtSession.SessionOptions()
             session = env.createSession(modelFile.absolutePath, options)
+
+            // 动态探测输出张量名
+            val outputNames = session!!.outputNames
+            val logitsCandidates = outputNames.filter { it.contains("logits", ignoreCase = true) }
+            if (logitsCandidates.isNotEmpty()) {
+                logitsOutputName = logitsCandidates.first()
+            } else if (outputNames.isNotEmpty()) {
+                // 如果没有 logits，尝试第一个输出
+                logitsOutputName = outputNames.first()
+            }
+            loadStatus = "输出张量: $logitsOutputName"
 
             val inputInfo = session!!.inputInfo
             var maxLayerIndex = -1
@@ -57,7 +69,7 @@ class InferenceEngine(private val context: Context) {
             if (tokenizer?.loadError != null) { lastError = tokenizer?.loadError; loadStatus = "失败: $lastError"; return false }
 
             isModelLoaded = true; lastError = null
-            loadStatus = "模型已加载 (${modelSize / (1024*1024)}MB, 层:$numLayers, KV头:$numKVHeads, 维:$headDim, EOS:${tokenizer?.eosTokenId})"
+            loadStatus = "模型已加载 (${modelSize / (1024*1024)}MB, 层:$numLayers, KV头:$numKVHeads, 维:$headDim, EOS:${tokenizer?.eosTokenId}, 输出:$logitsOutputName)"
             return true
         } catch (e: Exception) { lastError = "${e.javaClass.simpleName}: ${e.message}"; loadStatus = "异常: $lastError"; return false }
     }
@@ -131,8 +143,12 @@ class InferenceEngine(private val context: Context) {
                 inputs.putAll(currentPast)
 
                 val outputs = sess.run(inputs)
-                val logitsTensor = outputs["logits"] as? OnnxTensor
-                if (logitsTensor == null) { lastError = "输出中无logits"; return null }
+                // 使用动态探测的输出名获取 logits
+                val logitsTensor = outputs[logitsOutputName] as? OnnxTensor
+                if (logitsTensor == null) {
+                    lastError = "输出中无 $logitsOutputName 张量"
+                    return null
+                }
                 val logits = extractLogits(logitsTensor)
                 if (logits == null) { lastError = "logits提取失败"; return null }
                 val nextTokenLogits = logits[logits.size - 1]
@@ -160,7 +176,7 @@ class InferenceEngine(private val context: Context) {
             }
 
             if (generated.isEmpty()) {
-                lastError = "生成0个token，EOS=$eosId，输入长度=${inputIds.size}，格式已应用"
+                lastError = "生成0个token，EOS=$eosId，输入长度=${inputIds.size}"
                 return null
             }
             val fullIds = (inputIds + generated).toLongArray()
