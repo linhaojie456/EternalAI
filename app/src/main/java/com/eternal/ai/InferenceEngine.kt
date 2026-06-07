@@ -116,7 +116,6 @@ class InferenceEngine(private val context: Context) {
             val generated = mutableListOf<Long>()
             var currentPast = createEmptyPastKeyValues()
 
-            // 获取输出名称列表，用于后续 past_key_values 更新
             val outputNames = session!!.outputNames
             var logitsOutputName: String? = null
             for (name in outputNames) {
@@ -142,11 +141,8 @@ class InferenceEngine(private val context: Context) {
                 )
                 inputs.putAll(currentPast)
 
-                // 运行推理，返回 Map<String, OnnxValue>
                 val outputs = sess.run(inputs)
-
-                // 通过名称获取 logits 张量
-                val logitsTensor = outputs[logitsOutputName] as? OnnxTensor
+                val logitsTensor = findValueByName(outputs, logitsOutputName!!) as? OnnxTensor
                 if (logitsTensor == null) {
                     lastError = "输出中无logits张量，输出名称: $logitsOutputName"
                     return null
@@ -162,11 +158,10 @@ class InferenceEngine(private val context: Context) {
                 generated.add(nextToken)
                 inputIds.add(nextToken); attentionMask.add(1L); positionIds.add(positionIds.size.toLong())
 
-                // 更新 past_key_values
                 val newPast = mutableMapOf<String, OnnxTensor>()
                 for (name in outputNames) {
                     if (name.startsWith("present.")) {
-                        val tensor = outputs[name] as? OnnxTensor ?: continue
+                        val tensor = findValueByName(outputs, name) as? OnnxTensor ?: continue
                         val parts = name.removePrefix("present.").split(".")
                         if (parts.size >= 2) {
                             val layerIndex = parts[0].toIntOrNull() ?: continue
@@ -188,6 +183,16 @@ class InferenceEngine(private val context: Context) {
             val idx = rawOutput.lastIndexOf(marker)
             return if (idx >= 0) rawOutput.substring(idx + marker.length).trim() else rawOutput.removePrefix(formattedPrompt).trim()
         } catch (e: Exception) { lastError = "推理异常: ${e.message}"; return null }
+    }
+
+    // 辅助方法，通过遍历 Result 的键来获取值，避免直接使用有问题的 Map 接口
+    private fun findValueByName(result: OrtSession.Result, name: String): OnnxValue? {
+        for (key in result.keys) {
+            if (key == name) {
+                return result.get(key)
+            }
+        }
+        return null
     }
 
     fun start(coordinator: EngineCoordinator, onStatus: (String) -> Unit) {
