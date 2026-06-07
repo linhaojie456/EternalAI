@@ -1,6 +1,4 @@
 <vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
-    <!-- 第一个三角形（正向上） -->
-    <path android:fillColor="#00000000" android:pathData="M54,24 L74,62 L34,62 Z" android:strokeColor="#D4AF37" android:strokeWidth="2.5" />
-    <!-- 第二个三角形（正向下），与第一个完全重叠，中心一致 -->
-    <path android:fillColor="#00000000" android:pathData="M54,84 L74,46 L34,46 Z" android:strokeColor="#D4AF37" android:strokeWidth="2.5" />
+    <path android:fillColor="#00000000" android:pathData="M54,20 L74,68 L34,68 Z" android:strokeColor="#D4AF37" android:strokeWidth="2.5" />
+    <path android:fillColor="#00000000" android:pathData="M54,88 L74,40 L34,40 Z" android:strokeColor="#D4AF37" android:strokeWidth="2.5" />
 </vector>

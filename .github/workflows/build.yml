@@ -1,100 +1,65 @@
 name: Build Eternal APK
 on: [push, workflow_dispatch]
-
 env:
   ANDROID_HOME: /usr/local/lib/android/sdk
-
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 45  # 整体超时 45 分钟
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-java@v4
-        with:
-          java-version: '17'
-          distribution: 'temurin'
-
+        with: {java-version: '17', distribution: 'temurin'}
       - uses: gradle/actions/setup-gradle@v3
-        with:
-          gradle-version: '8.9'
-
+        with: {gradle-version: '8.9'}
       - uses: actions/setup-python@v5
-        with:
-          python-version: '3.10'
-
+        with: {python-version: '3.10'}
       - name: Create model directory
         run: mkdir -p app/src/main/assets/model
-
-      - name: Download DeepSeek ONNX model (optimized)
+      - name: Download DeepSeek ONNX model
         working-directory: app/src/main/assets/model
-        timeout-minutes: 15   # 下载步骤最多 15 分钟
+        timeout-minutes: 20
         run: |
           pip install -q huggingface_hub
           python3 << 'PYEOF'
           from huggingface_hub import hf_hub_download
           import os, sys, time
-
           repo_id = "onnx-community/DeepSeek-R1-Distill-Qwen-1.5B-ONNX"
-          files = {
-              "onnx/model_quantized.onnx": 800_000_000,
-              "tokenizer.json": 1_000_000,
-              "tokenizer_config.json": 100
-          }
-
+          files = {"onnx/model_quantized.onnx": 800_000_000, "tokenizer.json": 1_000_000, "tokenizer_config.json": 100}
           def dl(fname, min_size):
-              for attempt in range(3):  # 减少重试次数
+              for attempt in range(3):
                   try:
-                      print(f"Downloading {fname} (attempt {attempt+1})...")
                       path = hf_hub_download(repo_id, fname, local_dir=".")
                       size = os.path.getsize(path)
-                      if size >= min_size:
-                          return path
-                      else:
-                          print(f"  ⚠ size {size} < {min_size}")
-                  except Exception as e:
-                      print(f"  ✗ Error: {e}")
-                  time.sleep(10)  # 缩短等待
+                      if size >= min_size: return path
+                  except Exception as e: print(f"  ✗ Error: {e}")
+                  time.sleep(15)
               return None
-
           for fname, min_size in files.items():
-              if not dl(fname, min_size):
-                  sys.exit(1)
-
+              if not dl(fname, min_size): sys.exit(1)
           if os.path.exists("onnx/model_quantized.onnx"):
               os.rename("onnx/model_quantized.onnx", "model.onnx")
               os.rmdir("onnx")
-          else:
-              sys.exit(1)
-          print("All model files downloaded.")
+          else: sys.exit(1)
           PYEOF
-
       - name: Build debug APK
         run: gradle assembleDebug -Dorg.gradle.jvmargs="-Xmx6g"
-        env:
-          GRADLE_OPTS: "-Xmx6g"
-
+        env: {GRADLE_OPTS: "-Xmx6g"}
       - name: Install validation dependencies
         run: pip install onnxruntime tokenizers
-
       - name: Validate UI assets
         run: |
           ICON="app/src/main/res/drawable/ic_launcher_foreground.xml"
-          if [ ! -f "$ICON" ]; then echo "错误: 图标文件不存在"; exit 1; fi
-          grep -q "M54,24 L74,62 L34,62 Z" "$ICON" || { echo "错误: 图标缺少上三角路径"; exit 1; }
-          grep -q "M54,84 L74,46 L34,46 Z" "$ICON" || { echo "错误: 图标缺少下三角路径"; exit 1; }
-          echo "图标验证通过"
-
-      - name: Validate model generates non-empty output
+          grep -q "M54,20 L74,68 L34,68 Z" "$ICON" || exit 1
+          grep -q "M54,88 L74,40 L34,40 Z" "$ICON" || exit 1
+      - name: Validate model with 10 dialogues
         working-directory: app/src/main/assets/model
-        timeout-minutes: 5
+        timeout-minutes: 10
         run: |
           python3 << 'PYEOF'
           import onnxruntime as ort
           from tokenizers import Tokenizer
-          import numpy as np
-          import json, os, sys, time
+          import numpy as np, json, os, sys, time
 
           session = ort.InferenceSession("model.onnx", providers=['CPUExecutionProvider'])
           tokenizer = Tokenizer.from_file("tokenizer.json")
@@ -103,50 +68,46 @@ jobs:
           eos_token_id = json.load(open("tokenizer_config.json")).get("eos_token_id", 151643)
 
           def gen(prompt):
-              formatted = f"<|im_start|>system\n你是永恒。<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n"
+              formatted = f"<|im_start|>system\n汝是永恒之神。<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n"
               enc = tokenizer.encode(formatted)
               input_ids = np.array(enc.ids, dtype=np.int64).reshape(1, -1)
-              attention_mask = np.ones_like(input_ids, dtype=np.int64)
-              position_ids = np.arange(input_ids.shape[1], dtype=np.int64).reshape(1, -1)
+              seq_len = input_ids.shape[1]
+              attention_mask = np.ones((1, 1, 1, seq_len), dtype=np.int64)
+              position_ids = np.arange(seq_len, dtype=np.int64).reshape(1, -1)
               past = {f"past_key_values.{i}.key": np.zeros((1,2,0,128), dtype=np.float32) for i in range(28)}
               past.update({f"past_key_values.{i}.value": np.zeros((1,2,0,128), dtype=np.float32) for i in range(28)})
               generated = []
-              for _ in range(100):
+              for _ in range(150):
                   ort_inputs = {"input_ids": input_ids, "attention_mask": attention_mask, "position_ids": position_ids, **past}
                   logits = session.run([logits_name], ort_inputs)[0][0]
-                  next_token_logits = logits[-1, :]
-                  next_token = int(np.argmax(next_token_logits))
-                  if generated and next_token == eos_token_id:
-                      break
+                  next_token = int(np.argmax(logits[-1, :]))
+                  if generated and next_token == eos_token_id: break
                   generated.append(next_token)
                   input_ids = np.append(input_ids, [[next_token]], axis=1)
-                  attention_mask = np.append(attention_mask, [[1]], axis=1)
-                  position_ids = np.append(position_ids, [[position_ids.shape[1]]], axis=1)
-              if not generated:
-                  return None
+                  attention_mask = np.ones((1, 1, 1, input_ids.shape[1]), dtype=np.int64)
+                  position_ids = np.arange(input_ids.shape[1], dtype=np.int64).reshape(1, -1)
+              if not generated: return None
               decoded = tokenizer.decode(input_ids.flatten().tolist())
               idx = decoded.rfind("<|im_start|>assistant\n")
-              if idx >= 0:
-                  return decoded[idx+len("<|im_start|>assistant\n"):].strip()
-              return decoded
+              return decoded[idx+len("<|im_start|>assistant\n"):].strip() if idx>=0 else decoded
 
-          for prompt in ["你好", "你是谁？"]:
+          prompts = ["你好", "你是谁？", "1+1=？", "什么是爱？", "宇宙有多大？", "生命的意义", "今天天气", "写一首诗", "推荐一本书", "如何幸福"]
+          success = 0
+          for p in prompts:
               for attempt in range(3):
-                  reply = gen(prompt)
+                  reply = gen(p)
                   if reply and len(reply.strip()) >= 2:
-                      print(f"✓ 成功: {reply[:50]}")
+                      success += 1
+                      print(f"✓ [{p}] -> {reply[:60]}")
                       break
-                  time.sleep(2)
+                  time.sleep(1)
               else:
-                  continue
-              break
-          else:
-              print("所有尝试失败")
+                  print(f"✗ [{p}] 失败")
+          if success < 10:
+              print(f"错误: 仅 {success}/10 条对话通过验证")
               sys.exit(1)
+          print(f"验证通过: {success}/10 条对话")
           PYEOF
-
       - name: Upload APK
         uses: actions/upload-artifact@v4
-        with:
-          name: "永恒之神-APK"
-          path: app/build/outputs/apk/debug/app-debug.apk
+        with: {name: "永恒之神-APK", path: "app/build/outputs/apk/debug/app-debug.apk"}
