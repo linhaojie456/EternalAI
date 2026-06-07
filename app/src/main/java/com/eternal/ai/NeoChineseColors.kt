@@ -14,4 +14,9 @@ object NeoChineseColors {
     val White = Color(0xFFF0F0F0)
     val Gray = Color(0xFF808080)
     val ErrorRed = Color(0xFFF44336)
+    // 新增
+    val DeepRed = Color(0xFF8B0000)       // 印章红
+    val InkLight = Color(0xFF2E2E2E)       // 淡墨
+    val SkyBlue = Color(0xFF4682B4)        // 天青
+    val MistWhite = Color(0xFFF5F5F5)      // 雾白
 }

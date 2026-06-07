@@ -96,9 +96,14 @@ class InferenceEngine(private val context: Context) {
 
             for (step in 0 until maxTokens) {
                 val sess = session ?: break
-                val inputTensor = OnnxTensor.createTensor(env, arrayOf(inputIds.toLongArray()))
-                val maskTensor = OnnxTensor.createTensor(env, arrayOf(attentionMask.toLongArray()))
-                val posTensor = OnnxTensor.createTensor(env, arrayOf(positionIds.toLongArray()))
+                // 每次只输入最新的 token（逐 token 推理）
+                val lastInputId = inputIds.last()
+                val lastAttentionMask = 1L
+                val lastPositionId = positionIds.last()
+                
+                val inputTensor = OnnxTensor.createTensor(env, arrayOf(longArrayOf(lastInputId)))
+                val maskTensor = OnnxTensor.createTensor(env, arrayOf(longArrayOf(lastAttentionMask)))
+                val posTensor = OnnxTensor.createTensor(env, arrayOf(longArrayOf(lastPositionId)))
                 val inputs = mutableMapOf("input_ids" to inputTensor, "attention_mask" to maskTensor, "position_ids" to posTensor)
                 inputs.putAll(currentPast)
 
@@ -106,13 +111,15 @@ class InferenceEngine(private val context: Context) {
                 val logitsValue: OnnxValue = result.get(logitsIndex); val logitsTensor = logitsValue as? OnnxTensor
                 if (logitsTensor == null) { lastError = "输出索引 $logitsIndex 不是 OnnxTensor"; return null }
                 val logits = extractLogits(logitsTensor) ?: run { lastError = "logits提取失败"; return null }
-                val nextTokenLogits = logits[logits.size - 1]; val nextToken = sampleToken(nextTokenLogits)
+                val nextTokenLogits = logits[0][0]  // (1,1,vocab_size) -> [0][0]
+                val nextToken = sampleToken(nextTokenLogits)
 
                 if (generated.isNotEmpty() && nextToken == eosId) break
-                if (generated.isNotEmpty() && nextToken == generated.last() && nextToken == generated.getOrElse(generated.size - 2) { -1L }) continue
 
-                generated.add(nextToken); inputIds.add(nextToken); attentionMask.add(1L); positionIds.add(positionIds.size.toLong())
+                generated.add(nextToken)
+                inputIds.add(nextToken); attentionMask.add(1L); positionIds.add(positionIds.size.toLong())
 
+                // 更新 KV Cache
                 val newPast = mutableMapOf<String, OnnxTensor>()
                 for (idx in outputNames.indices) {
                     val name = outputNames[idx]
