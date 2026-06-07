@@ -11,10 +11,13 @@ jobs:
         with: {java-version: '17', distribution: 'temurin'}
       - uses: gradle/actions/setup-gradle@v3
         with: {gradle-version: '8.9'}
+
       - uses: actions/setup-python@v5
         with: {python-version: '3.10'}
+
       - name: Create model directory
         run: mkdir -p app/src/main/assets/model
+
       - name: Download DeepSeek ONNX model (mirror + backoff)
         working-directory: app/src/main/assets/model
         run: |
@@ -62,10 +65,10 @@ jobs:
               sys.exit(1)
           print("All model files downloaded successfully.")
           PYEOF
-      - name: Generate Gradle Wrapper
-        run: gradle wrapper --gradle-version 8.9
+
+      # 直接使用 gradle 命令，不再生成 wrapper
       - name: Build debug APK
-        run: ./gradlew assembleDebug -Dorg.gradle.jvmargs="-Xmx6g"
+        run: gradle assembleDebug -Dorg.gradle.jvmargs="-Xmx6g"
         env: {GRADLE_OPTS: "-Xmx6g"}
 
       - name: Clean build cache
@@ -82,12 +85,8 @@ jobs:
             echo "错误: 六角星图标文件缺失"
             exit 1
           fi
-          if ! grep -q "M54,22 L74,62 L34,62 Z" "$ICON_FILE"; then
-            echo "错误: 图标中缺少上三角路径"
-            exit 1
-          fi
-          if ! grep -q "M54,86 L74,46 L34,46 Z" "$ICON_FILE"; then
-            echo "错误: 图标中缺少下三角路径"
+          if ! grep -q "M54,24 L47,41.88 L28.02,39 L40,54 L28.02,69 L47,66.12 L54,84 L61,66.12 L79.98,69 L68,54 L79.98,39 L61,41.88 Z" "$ICON_FILE"; then
+            echo "错误: 六角星路径不正确"
             exit 1
           fi
           echo "六角星图标验证通过"
