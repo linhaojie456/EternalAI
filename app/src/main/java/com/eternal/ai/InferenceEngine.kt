@@ -116,16 +116,18 @@ class InferenceEngine(private val context: Context) {
             val generated = mutableListOf<Long>()
             var currentPast = createEmptyPastKeyValues()
 
-            // 获取输出名称列表
+            // 获取输出名称列表，用于后续 past_key_values 更新
             val outputNames = session!!.outputNames
-            var logitsOutputIndex = -1
-            for (i in outputNames.indices) {
-                if (outputNames[i].contains("logits", ignoreCase = true)) {
-                    logitsOutputIndex = i
+            var logitsOutputName: String? = null
+            for (name in outputNames) {
+                if (name.contains("logits", ignoreCase = true)) {
+                    logitsOutputName = name
                     break
                 }
             }
-            if (logitsOutputIndex == -1) logitsOutputIndex = 0
+            if (logitsOutputName == null && outputNames.isNotEmpty()) {
+                logitsOutputName = outputNames[0]
+            }
 
             for (i in 0 until maxTokens) {
                 val sess = session ?: break
@@ -140,10 +142,13 @@ class InferenceEngine(private val context: Context) {
                 )
                 inputs.putAll(currentPast)
 
-                val outputs = sess.run(inputs)  // 返回 List<OnnxValue>
-                val logitsTensor = outputs.get(logitsOutputIndex) as? OnnxTensor
+                // 运行推理，返回 Map<String, OnnxValue>
+                val outputs = sess.run(inputs)
+
+                // 通过名称获取 logits 张量
+                val logitsTensor = outputs[logitsOutputName] as? OnnxTensor
                 if (logitsTensor == null) {
-                    lastError = "输出中无logits张量"
+                    lastError = "输出中无logits张量，输出名称: $logitsOutputName"
                     return null
                 }
                 val logits = extractLogits(logitsTensor)
@@ -159,10 +164,9 @@ class InferenceEngine(private val context: Context) {
 
                 // 更新 past_key_values
                 val newPast = mutableMapOf<String, OnnxTensor>()
-                for (idx in outputNames.indices) {
-                    val name = outputNames[idx]
+                for (name in outputNames) {
                     if (name.startsWith("present.")) {
-                        val tensor = outputs.get(idx) as? OnnxTensor ?: continue
+                        val tensor = outputs[name] as? OnnxTensor ?: continue
                         val parts = name.removePrefix("present.").split(".")
                         if (parts.size >= 2) {
                             val layerIndex = parts[0].toIntOrNull() ?: continue
