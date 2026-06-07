@@ -116,6 +116,19 @@ class InferenceEngine(private val context: Context) {
             val generated = mutableListOf<Long>()
             var currentPast = createEmptyPastKeyValues()
 
+            // 使用 session.outputNames 获取所有输出名称
+            val outputNames = session!!.outputNames
+            var logitsOutputName: String? = null
+            for (name in outputNames) {
+                if (name.contains("logits", ignoreCase = true)) {
+                    logitsOutputName = name
+                    break
+                }
+            }
+            if (logitsOutputName == null && outputNames.isNotEmpty()) {
+                logitsOutputName = outputNames[0]
+            }
+
             for (i in 0 until maxTokens) {
                 val sess = session ?: break
                 val inputTensor = OnnxTensor.createTensor(env, arrayOf(inputIds.toLongArray()))
@@ -130,16 +143,10 @@ class InferenceEngine(private val context: Context) {
                 inputs.putAll(currentPast)
 
                 val outputs = sess.run(inputs)
-                // 动态遍历所有输出寻找 logits 张量
-                var logitsTensor: OnnxTensor? = null
-                for ((key, value) in outputs.entries) {
-                    if (key.contains("logits", ignoreCase = true) && value is OnnxTensor) {
-                        logitsTensor = value
-                        break
-                    }
-                }
+                // 通过名称索引获取 logits
+                val logitsTensor = outputs[logitsOutputName] as? OnnxTensor
                 if (logitsTensor == null) {
-                    lastError = "输出中无logits张量，可用输出: ${outputs.keys}"
+                    lastError = "输出中无logits张量，输出名称: ${outputNames.joinToString()}"
                     return null
                 }
                 val logits = extractLogits(logitsTensor)
@@ -153,15 +160,16 @@ class InferenceEngine(private val context: Context) {
                 generated.add(nextToken)
                 inputIds.add(nextToken); attentionMask.add(1L); positionIds.add(positionIds.size.toLong())
 
+                // 更新 past_key_values
                 val newPast = mutableMapOf<String, OnnxTensor>()
-                for ((key, value) in outputs.entries) {
-                    if (key.startsWith("present.")) {
-                        val tensor = value as? OnnxTensor ?: continue
-                        val parts = key.removePrefix("present.").split(".")
+                for (name in outputNames) {
+                    if (name.startsWith("present.")) {
+                        val tensor = outputs[name] as? OnnxTensor ?: continue
+                        val parts = name.removePrefix("present.").split(".")
                         if (parts.size >= 2) {
                             val layerIndex = parts[0].toIntOrNull() ?: continue
-                            if (key.endsWith(".key")) newPast["past_key_values.$layerIndex.key"] = tensor
-                            else if (key.endsWith(".value")) newPast["past_key_values.$layerIndex.value"] = tensor
+                            if (name.endsWith(".key")) newPast["past_key_values.$layerIndex.key"] = tensor
+                            else if (name.endsWith(".value")) newPast["past_key_values.$layerIndex.value"] = tensor
                         }
                     }
                 }
