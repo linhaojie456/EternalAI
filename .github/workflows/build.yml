@@ -109,8 +109,10 @@ jobs:
               generated = []
               for _ in range(100):
                   ort_inputs = {"input_ids": input_ids, "attention_mask": attention_mask, "position_ids": position_ids, **past}
-                  logits = session.run([logits_name], ort_inputs)[0][0]
-                  next_token = int(np.random.choice(50, p=np.exp(logits[-1]/0.8)/np.sum(np.exp(logits[-1]/0.8))[:50]))
+                  logits = session.run([logits_name], ort_inputs)[0]
+                  # 安全获取最后一个 token 的 logits
+                  next_token_logits = logits[0, -1, :]
+                  next_token = int(np.argmax(next_token_logits))
                   if generated and next_token == eos_token_id:
                       break
                   generated.append(next_token)
