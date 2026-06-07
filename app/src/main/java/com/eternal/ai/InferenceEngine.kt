@@ -116,7 +116,8 @@ class InferenceEngine(private val context: Context) {
             val generated = mutableListOf<Long>()
             var currentPast = createEmptyPastKeyValues()
 
-            val outputNames: List<String> = session!!.outputNames
+            // 将 Set 转为 List，保持顺序
+            val outputNames: List<String> = session!!.outputNames.toList()
             var logitsIndex = -1
             for (i in outputNames.indices) {
                 if (outputNames[i].contains("logits", ignoreCase = true)) {
@@ -140,7 +141,6 @@ class InferenceEngine(private val context: Context) {
                 inputs.putAll(currentPast)
 
                 val result: OrtSession.Result = sess.run(inputs)
-                // 通过索引获取 logits 值
                 val logitsValue: OnnxValue = result.get(logitsIndex)
                 val logitsTensor = logitsValue as? OnnxTensor
                 if (logitsTensor == null) {
