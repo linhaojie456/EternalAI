@@ -61,3 +61,14 @@ def make_universe():
                 return expr
         return expr
     return eval_expr
+
+def eval_string(expr_str, env_dict=None):
+    """供Kotlin调用的简单接口：计算Python表达式字符串，在指定环境中"""
+    if env_dict is None:
+        env_dict = {}
+    # 这里为了安全，可以直接用eval，但限制内置函数
+    # 我们在env_dict中放入需要的变量
+    try:
+        return eval(expr_str, {"__builtins__": {}}, env_dict)
+    except Exception as e:
+        return f"Error: {e}"

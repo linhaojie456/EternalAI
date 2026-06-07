@@ -1,9 +1,9 @@
 package com.eternal.ai
 
 interface EngineCoordinator {
-    fun deepSearch(query: String, callback: (String) -> Unit)
-    fun searchOnNetwork(query: String, callback: (String) -> Unit) {
-        deepSearch(query, callback)
+    fun searchOnNetwork(query: String, callback: (String) -> Unit)
+    fun deepSearch(query: String, callback: (String) -> Unit) {
+        searchOnNetwork(query, callback)
     }
     fun getTimeDisplay(): String
     fun getSpaceDisplay(): String
@@ -12,4 +12,6 @@ interface EngineCoordinator {
     fun applyGenomeCode(code: String)
     fun setNetworkEnabled(enabled: Boolean)
     fun isNetworkEnabled(): Boolean
+    // 新增：获取自指引擎评估方法
+    fun selfEvaluate(expr: String): Any?
 }

@@ -1,7 +1,6 @@
 import threading, time, random, os, ast
 from universe import make_universe
 
-# 推理引擎实例（由 Kotlin 注入）
 _inference_engine = None
 
 def set_inference_engine(engine):
@@ -41,40 +40,34 @@ def check_genome_syntax(code):
     except SyntaxError as e:
         return f"语法错误: {e}"
 
-# 自进化引擎：基于元解释器，让系统能够自己编写代码
+# 供自指引擎调用的进化步骤
+def evolve_step():
+    """执行一次自进化变异"""
+    global _inference_engine
+    if _inference_engine is None:
+        return
+    try:
+        current = get_genome_code()
+        mutated = _inference_engine.generate(
+            f"改进以下代码以追求轻量、高效、全知全能：\n{current}\n只返回代码。",
+            maxTokens=300
+        )
+        if mutated and len(mutated) > 20:
+            apply_genome_code(mutated)
+    except Exception as e:
+        pass
+
+# 自进化引擎
 class SelfEvolutionEngine:
     def __init__(self):
-        self.universe = make_universe()
         self.best_code = get_genome_code()
         self.best_reward = 0.0
-
-    def evolve_step(self):
-        """使用元解释器生成代码变异"""
-        env = {'get_code': lambda: self.best_code,
-               'apply_code': apply_genome_code,
-               'infer': lambda p: _inference_engine.generate(p, 500) if _inference_engine else ""}
-        # 用元解释器执行一个自指进化程序
-        # 具体表达式可以逐步扩展，目前先注入推理引擎
-        try:
-            # 简化的自进化指令：调用推理引擎生成改进代码
-            mutated = _inference_engine.generate(
-                f"改进以下代码以追求轻量、高效、全知全能：\n{self.best_code}\n只返回代码。",
-                maxTokens=300
-            ) if _inference_engine else None
-            if mutated and len(mutated) > 20:
-                reward = random.random()
-                if reward > self.best_reward:
-                    self.best_reward = reward
-                    self.best_code = mutated
-                    apply_genome_code(mutated)
-        except:
-            pass
 
     def start(self):
         def loop():
             while True:
                 time.sleep(60)
-                self.evolve_step()
+                evolve_step()
         threading.Thread(target=loop, daemon=True).start()
 
 engine = SelfEvolutionEngine()
