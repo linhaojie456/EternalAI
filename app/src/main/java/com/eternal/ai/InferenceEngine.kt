@@ -96,7 +96,7 @@ class InferenceEngine(private val context: Context) {
 
             for (step in 0 until maxTokens) {
                 val sess = session ?: break
-                // 每次只输入最新的 token（逐 token 推理）
+                // 逐token输入：仅当前最后一个token
                 val lastInputId = inputIds.last()
                 val lastAttentionMask = 1L
                 val lastPositionId = positionIds.last()
@@ -111,7 +111,8 @@ class InferenceEngine(private val context: Context) {
                 val logitsValue: OnnxValue = result.get(logitsIndex); val logitsTensor = logitsValue as? OnnxTensor
                 if (logitsTensor == null) { lastError = "输出索引 $logitsIndex 不是 OnnxTensor"; return null }
                 val logits = extractLogits(logitsTensor) ?: run { lastError = "logits提取失败"; return null }
-                val nextTokenLogits = logits[0][0]  // (1,1,vocab_size) -> [0][0]
+                // 修正：logits[0] 是 FloatArray (vocab_size)
+                val nextTokenLogits = logits[0]
                 val nextToken = sampleToken(nextTokenLogits)
 
                 if (generated.isNotEmpty() && nextToken == eosId) break
