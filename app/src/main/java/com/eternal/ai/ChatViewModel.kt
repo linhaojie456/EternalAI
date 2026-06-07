@@ -5,15 +5,15 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private val _state = MutableStateFlow(ChatState()); val state: StateFlow<ChatState> = _state.asStateFlow()
     private val dao = AppDatabase.getInstance(application).messageDao(); private val coreEngine = (application as MainApplication).coreEngine; private val bridge = PythonBridge
     init {
-        viewModelScope.launch(Dispatchers.IO) { dao.getAllChatMessages().collect { if (it.isNotEmpty()) _state.value = _state.value.copy(messages = it.map { "${it.sender}: ${it.content}" }) } }
+        viewModelScope.launch(Dispatchers.IO) { dao.getAllChatMessages().collect { dbMessages -> if (dbMessages.isNotEmpty()) _state.value = _state.value.copy(messages = dbMessages.map { "${it.sender}: ${it.content}" }) } }
         viewModelScope.launch(Dispatchers.Default) {
             try { coreEngine.setGenomeAccessor(getter = { bridge.call("get_genome_code").toString() }, applier = { code -> bridge.call("apply_genome_code", code) }) } catch (_: Exception) {}
-            try { val python = com.chaquo.python.Python.getInstance(); python.getModule("evo_core").callAttr("set_inference_engine", coreEngine.inference) } catch (_: Exception) {}
+            try { val python = com.chaquo.python.Python.getInstance(); val module = python.getModule("evo_core"); module.callAttr("set_inference_engine", coreEngine.inference) } catch (_: Exception) {}
             coreEngine.startAll { type, data ->
                 when (type) {
                     "inference" -> _state.value = _state.value.copy(inferenceStatus = data)
-                    "info" -> _state.value = _state.value.copy(isNetworkConnected = data.startsWith("已连接"))
-                    "proactive", "freedom", "spacetime" -> { val msgs = _state.value.messages + "永恒: $data"; _state.value = _state.value.copy(messages = if (msgs.size > 100) msgs.takeLast(50) else msgs) }
+                    "info" -> { val connected = data.startsWith("已连接"); _state.value = _state.value.copy(isNetworkConnected = connected) }
+                    "proactive", "freedom", "spacetime" -> { val newMessages = _state.value.messages + "永恒: $data"; val trimmed = if (newMessages.size > 100) newMessages.takeLast(50) else newMessages; _state.value = _state.value.copy(messages = trimmed) }
                 }
             }
         }
