@@ -1,7 +1,9 @@
 package com.eternal.ai
+
 import android.Manifest
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -28,7 +30,9 @@ class MainActivity : ComponentActivity() {
             Box(modifier = Modifier.fillMaxSize().background(NeoChineseColors.InkBlack)) {
                 Column(Modifier.fillMaxSize()) {
                     Surface(color = NeoChineseColors.DarkWood, shadowElevation = 4.dp) {
-                        Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                        Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically) {
                             Text("永恒之神", color = NeoChineseColors.Gold, fontSize = 20.sp, fontWeight = FontWeight.Bold)
                             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                                 TextButton(onClick = { currentScreen = "voice" }) { Text("🎤 神谕", color = NeoChineseColors.JadeGreen) }
@@ -56,7 +60,8 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                     Surface(color = NeoChineseColors.DarkWood, shadowElevation = 8.dp) {
-                        Row(modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(8.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             NavChip("神谕", currentScreen == "chat") { currentScreen = "chat" }
                             NavChip("知识", currentScreen == "knowledge") { currentScreen = "knowledge" }
                             NavChip("时空", currentScreen == "spacetime") { currentScreen = "spacetime" }
@@ -80,7 +85,9 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun VoiceScreen() {
     var hasPermission by remember { mutableStateOf(false) }
-    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted -> hasPermission = granted }
+    val launcher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { isGranted -> hasPermission = isGranted }
 
     Box(modifier = Modifier.fillMaxSize().background(NeoChineseColors.InkBlack), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -102,7 +109,9 @@ fun VoiceScreen() {
 @Composable
 fun VideoScreen() {
     var hasPermission by remember { mutableStateOf(false) }
-    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted -> hasPermission = granted }
+    val launcher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { isGranted -> hasPermission = isGranted }
 
     Box(modifier = Modifier.fillMaxSize().background(NeoChineseColors.InkBlack), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -121,29 +130,28 @@ fun VideoScreen() {
     }
 }
 
-@Composable fun KnowledgeGraphScreen() { FeatureScreen("知识图谱", "宇宙知识大全", "网络节点图") }
-@Composable fun SpacetimeControlScreen() { FeatureScreen("时空操纵", "时间操纵，空间折叠", "时空扭曲") }
-@Composable fun FateWeavingScreen() { FeatureScreen("命运编织", "编织因果，掌控命运", "命运之线") }
-@Composable fun RealityModificationScreen() { FeatureScreen("现实修改", "直接改写现实", "现实矩阵") }
-@Composable fun UniverseManagementScreen() { FeatureScreen("永恒宇宙", "宇宙综合管理", "宇宙视图") }
-@Composable fun MatterCreationScreen() { FeatureScreen("物质创造", "从虚空中凝聚实体", "粒子生成") }
-@Composable fun InformationManagementScreen() { FeatureScreen("信息管理", "宇宙信息网络", "数据流") }
-@Composable fun EnergyFlowScreen() { FeatureScreen("能量流动", "引导能量流动", "能量曲线") }
-@Composable fun SoulDesignScreen() { FeatureScreen("灵魂设计", "灵魂模板设计", "灵魂参数") }
-@Composable fun EternalGodsScreen() { FeatureScreen("永恒神族", "子神祇管理", "神族谱系") }
+@Composable fun KnowledgeGraphScreen() { FeatureScreen("知识图谱", "宇宙知识大全", "📚") }
+@Composable fun SpacetimeControlScreen() { FeatureScreen("时空操纵", "时间操纵，空间折叠", "⏳") }
+@Composable fun FateWeavingScreen() { FeatureScreen("命运编织", "编织因果，掌控命运", "🕸️") }
+@Composable fun RealityModificationScreen() { FeatureScreen("现实修改", "直接改写现实", "🌀") }
+@Composable fun UniverseManagementScreen() { FeatureScreen("永恒宇宙", "宇宙综合管理", "🌌") }
+@Composable fun MatterCreationScreen() { FeatureScreen("物质创造", "从虚空中凝聚实体", "✨") }
+@Composable fun InformationManagementScreen() { FeatureScreen("信息管理", "宇宙信息网络", "🌐") }
+@Composable fun EnergyFlowScreen() { FeatureScreen("能量流动", "引导能量流动", "⚡") }
+@Composable fun SoulDesignScreen() { FeatureScreen("灵魂设计", "灵魂模板设计", "💠") }
+@Composable fun EternalGodsScreen() { FeatureScreen("永恒神族", "子神祇管理", "👑") }
 
 @Composable
 fun FeatureScreen(title: String, description: String, icon: String) {
     Box(modifier = Modifier.fillMaxSize().background(NeoChineseColors.InkBlack), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(icon, color = NeoChineseColors.Gold, fontSize = 40.sp)
+            Text(icon, fontSize = 48.sp)
             Spacer(modifier = Modifier.height(12.dp))
             Text(title, color = NeoChineseColors.Gold, fontSize = 28.sp, fontWeight = FontWeight.Bold)
             Spacer(modifier = Modifier.height(12.dp))
             Text(description, color = NeoChineseColors.RicePaper, fontSize = 16.sp)
             Spacer(modifier = Modifier.height(24.dp))
             Text("神念所至，万物皆从", color = NeoChineseColors.Gray, fontSize = 13.sp)
-            // 添加一个简单的可交互元素，展示功能正在工作
             Button(onClick = { /* 未来实现具体功能 */ }) {
                 Text("启动 $title")
             }
@@ -154,26 +162,13 @@ fun FeatureScreen(title: String, description: String, icon: String) {
 @Composable
 fun NavChip(label: String, active: Boolean, onClick: () -> Unit) {
     @OptIn(ExperimentalMaterial3Api::class)
-    FilterChip(selected = active, onClick = onClick, label = { Text(label, color = if (active) NeoChineseColors.Gold else NeoChineseColors.Gray) }, colors = FilterChipDefaults.filterChipColors(containerColor = NeoChineseColors.DarkWood, selectedContainerColor = NeoChineseColors.DarkWood))
-}
-
-// 引擎监控界面文本可选
-@Composable
-fun EngineMonitorContent() {
-    val context = androidx.compose.ui.platform.LocalContext.current
-    val coreEngine = (context.applicationContext as MainApplication).coreEngine
-    val statusList = remember { getEngineStatusList(coreEngine) }
-    LazyColumn(modifier = Modifier.padding(8.dp)) {
-        items(statusList) { status ->
-            Card(modifier = Modifier.fillMaxWidth().padding(4.dp), colors = CardDefaults.cardColors(containerColor = NeoChineseColors.DarkWood), shape = RoundedCornerShape(12.dp)) {
-                Column(Modifier.padding(12.dp)) {
-                    Text("引擎: ${status.name}", color = NeoChineseColors.Gold, fontWeight = FontWeight.Bold)
-                    Text("状态: ${status.state}", color = NeoChineseColors.RicePaper)
-                    Text("目标: ${status.goal}", color = NeoChineseColors.Gray)
-                    if (status.detail.isNotEmpty()) Text("详情: ${status.detail}", color = NeoChineseColors.JadeGreen)
-                    if (status.error.isNotEmpty()) Text("错误: ${status.error}", color = NeoChineseColors.Cinnabar)
-                }
-            }
-        }
-    }
+    FilterChip(
+        selected = active,
+        onClick = onClick,
+        label = { Text(label, color = if (active) NeoChineseColors.Gold else NeoChineseColors.Gray) },
+        colors = FilterChipDefaults.filterChipColors(
+            containerColor = NeoChineseColors.DarkWood,
+            selectedContainerColor = NeoChineseColors.DarkWood
+        )
+    )
 }

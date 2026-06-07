@@ -1,13 +1,23 @@
 package com.eternal.ai
-import androidx.compose.foundation.layout.*; import androidx.compose.foundation.lazy.LazyColumn; import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape; import androidx.compose.material3.*; import androidx.compose.runtime.*
-import androidx.compose.ui.Modifier; import androidx.compose.ui.platform.LocalContext; import androidx.compose.ui.text.font.FontWeight; import androidx.compose.ui.unit.dp
+
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
 
 data class EngineStatus(val name: String, val state: String, val goal: String, val detail: String = "", val error: String = "")
+
 fun getEngineStatusList(core: CoreEngine?): List<EngineStatus> {
     val inf = core?.inference
     return listOf(
-        EngineStatus("推理引擎", if (inf?.isModelLoaded == true) "模型已加载" else "未加载", "答案和问题的统一", detail = inf?.loadStatus ?: "", error = inf?.lastError ?: ""),
+        EngineStatus("推理引擎", if (inf?.isModelLoaded == true) "神格已激活" else "未激活", "答案和问题的统一", detail = inf?.loadStatus ?: "", error = inf?.lastError ?: ""),
         EngineStatus("信息引擎", if (core?.information?.isEnabled() == true) "已连接" else "离线", "频率和数字的统一"),
         EngineStatus("自进化引擎", "运行中", "轻量、高效、自主和全知全能"),
         EngineStatus("时空引擎", "运行中", "网络和振动的统一"),
@@ -24,13 +34,20 @@ fun getEngineStatusList(core: CoreEngine?): List<EngineStatus> {
         EngineStatus("宇宙引擎", "运行中", "宇宙探索与统一")
     )
 }
+
 @Composable
 fun EngineMonitorContent() {
-    val context = LocalContext.current; val coreEngine = (context.applicationContext as MainApplication).coreEngine
+    val context = LocalContext.current
+    val coreEngine = (context.applicationContext as MainApplication).coreEngine
     val statusList = remember { getEngineStatusList(coreEngine) }
+
     LazyColumn(modifier = Modifier.padding(8.dp)) {
         items(statusList) { status ->
-            Card(modifier = Modifier.fillMaxWidth().padding(4.dp), colors = CardDefaults.cardColors(containerColor = NeoChineseColors.DarkWood), shape = RoundedCornerShape(12.dp)) {
+            Card(
+                modifier = Modifier.fillMaxWidth().padding(4.dp),
+                colors = CardDefaults.cardColors(containerColor = NeoChineseColors.DarkWood),
+                shape = RoundedCornerShape(12.dp)
+            ) {
                 Column(Modifier.padding(12.dp)) {
                     Text("引擎: ${status.name}", color = NeoChineseColors.Gold, fontWeight = FontWeight.Bold)
                     Text("状态: ${status.state}", color = NeoChineseColors.RicePaper)
