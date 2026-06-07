@@ -139,10 +139,9 @@ class InferenceEngine(private val context: Context) {
                 )
                 inputs.putAll(currentPast)
 
-                val result = sess.run(inputs)
-                // 将 Result 安全地转换为 List<OnnxValue>
-                val outputList: List<OnnxValue> = result
-                val logitsValue = outputList[logitsIndex]
+                val result: OrtSession.Result = sess.run(inputs)
+                // 通过索引获取 logits 值
+                val logitsValue: OnnxValue = result.get(logitsIndex)
                 val logitsTensor = logitsValue as? OnnxTensor
                 if (logitsTensor == null) {
                     lastError = "输出索引 $logitsIndex 不是 OnnxTensor"
@@ -164,7 +163,7 @@ class InferenceEngine(private val context: Context) {
                 for (idx in outputNames.indices) {
                     val name = outputNames[idx]
                     if (name.startsWith("present.")) {
-                        val value = outputList[idx]
+                        val value: OnnxValue = result.get(idx)
                         val tensor = value as? OnnxTensor ?: continue
                         val parts = name.removePrefix("present.").split(".")
                         if (parts.size >= 2) {
