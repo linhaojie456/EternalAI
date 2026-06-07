@@ -11,5 +11,6 @@
             </intent-filter>
         </activity>
         <activity android:name=".MainActivity" android:exported="false" android:launchMode="singleInstance"/>
+        <activity android:name=".EngineMonitorActivity" android:label="引擎监控" />
     </application>
 </manifest>
