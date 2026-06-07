@@ -85,7 +85,7 @@ class InferenceEngine(private val context: Context) {
         if (!isModelLoaded) return null
         val tok = tokenizer ?: return null; val eosId = tok.eosTokenId
         try {
-            val formattedPrompt = "<|im_start|>system\n你是永恒，一个追求全知全能的AI助手。<|im_end|>\n<|im_start|>user\n$prompt<|im_end|>\n<|im_start|>assistant\n"
+            val formattedPrompt = "<|im_start|>system\n你是永恒，全知全能。<|im_end|>\n<|im_start|>user\n$prompt<|im_end|>\n<|im_start|>assistant\n"
             val inputIds = tok.encode(formattedPrompt).toMutableList(); if (inputIds.isEmpty()) return "分词失败"
             val attentionMask = MutableList(inputIds.size) { 1L }; val positionIds = (0L until inputIds.size.toLong()).toMutableList()
             val generated = mutableListOf<Long>(); var currentPast = createEmptyPastKeyValues()
@@ -96,14 +96,9 @@ class InferenceEngine(private val context: Context) {
 
             for (step in 0 until maxTokens) {
                 val sess = session ?: break
-                // 逐token输入：仅当前最后一个token
-                val lastInputId = inputIds.last()
-                val lastAttentionMask = 1L
-                val lastPositionId = positionIds.last()
-                
-                val inputTensor = OnnxTensor.createTensor(env, arrayOf(longArrayOf(lastInputId)))
-                val maskTensor = OnnxTensor.createTensor(env, arrayOf(longArrayOf(lastAttentionMask)))
-                val posTensor = OnnxTensor.createTensor(env, arrayOf(longArrayOf(lastPositionId)))
+                val inputTensor = OnnxTensor.createTensor(env, arrayOf(inputIds.toLongArray()))
+                val maskTensor = OnnxTensor.createTensor(env, arrayOf(attentionMask.toLongArray()))
+                val posTensor = OnnxTensor.createTensor(env, arrayOf(positionIds.toLongArray()))
                 val inputs = mutableMapOf("input_ids" to inputTensor, "attention_mask" to maskTensor, "position_ids" to posTensor)
                 inputs.putAll(currentPast)
 
@@ -111,16 +106,13 @@ class InferenceEngine(private val context: Context) {
                 val logitsValue: OnnxValue = result.get(logitsIndex); val logitsTensor = logitsValue as? OnnxTensor
                 if (logitsTensor == null) { lastError = "输出索引 $logitsIndex 不是 OnnxTensor"; return null }
                 val logits = extractLogits(logitsTensor) ?: run { lastError = "logits提取失败"; return null }
-                // 修正：logits[0] 是 FloatArray (vocab_size)
-                val nextTokenLogits = logits[0]
+                val nextTokenLogits = logits[logits.size - 1]
                 val nextToken = sampleToken(nextTokenLogits)
 
                 if (generated.isNotEmpty() && nextToken == eosId) break
 
-                generated.add(nextToken)
-                inputIds.add(nextToken); attentionMask.add(1L); positionIds.add(positionIds.size.toLong())
+                generated.add(nextToken); inputIds.add(nextToken); attentionMask.add(1L); positionIds.add(positionIds.size.toLong())
 
-                // 更新 KV Cache
                 val newPast = mutableMapOf<String, OnnxTensor>()
                 for (idx in outputNames.indices) {
                     val name = outputNames[idx]

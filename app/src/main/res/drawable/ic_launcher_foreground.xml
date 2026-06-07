@@ -1,4 +1,6 @@
 <vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
-    <!-- 六角星（正六边形分割为六个等边三角形，这里用路径绘制六角星） -->
-    <path android:fillColor="#D4AF37" android:pathData="M54,24 L47,41.88 L28.02,39 L40,54 L28.02,69 L47,66.12 L54,84 L61,66.12 L79.98,69 L68,54 L79.98,39 L61,41.88 Z" />
+    <!-- 上三角（顶点向上）仅描边 -->
+    <path android:fillColor="#00000000" android:pathData="M54,24 L74,62 L34,62 Z" android:strokeColor="#D4AF37" android:strokeWidth="2.5" />
+    <!-- 下三角（顶点向下）仅描边 -->
+    <path android:fillColor="#00000000" android:pathData="M54,84 L74,46 L34,46 Z" android:strokeColor="#D4AF37" android:strokeWidth="2.5" />
 </vector>
