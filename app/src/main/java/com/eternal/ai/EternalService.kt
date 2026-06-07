@@ -1,24 +1,6 @@
-package com.eternal.ai
-import android.app.NotificationChannel
-import android.app.NotificationManager
-import android.app.PendingIntent
-import android.app.Service
-import android.content.Intent
-import android.os.IBinder
-import androidx.core.app.NotificationCompat
+package com.eternal.ai; import android.app.NotificationChannel; import android.app.NotificationManager; import android.app.PendingIntent; import android.app.Service; import android.content.Intent; import android.os.IBinder; import androidx.core.app.NotificationCompat
 class EternalService : Service() {
-    override fun onCreate() {
-        super.onCreate()
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-            val channel = NotificationChannel("eternal_foreground", "永恒后台服务", NotificationManager.IMPORTANCE_LOW)
-            getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
-        }
-    }
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        val pendingIntent = PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
-        val notification = NotificationCompat.Builder(this, "eternal_foreground").setContentTitle("永恒正在后台运行").setContentText("十二引擎保持活跃").setSmallIcon(android.R.drawable.ic_menu_info_details).setContentIntent(pendingIntent).build()
-        startForeground(1, notification)
-        return START_STICKY
-    }
+    override fun onCreate() { super.onCreate(); if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) { val channel = NotificationChannel("eternal_foreground", "永恒后台服务", NotificationManager.IMPORTANCE_LOW); getSystemService(NotificationManager::class.java).createNotificationChannel(channel) } }
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int { val pendingIntent = PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT); val notification = NotificationCompat.Builder(this, "eternal_foreground").setContentTitle("永恒正在后台运行").setContentText("十二引擎保持活跃").setSmallIcon(android.R.drawable.ic_menu_info_details).setContentIntent(pendingIntent).build(); startForeground(1, notification); return START_STICKY }
     override fun onBind(intent: Intent?): IBinder? = null
 }
