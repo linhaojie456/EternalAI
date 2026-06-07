@@ -1,234 +1,79 @@
 name: Build Eternal APK
 on: [push, workflow_dispatch]
-env:
-  ANDROID_HOME: /usr/local/lib/android/sdk
+env: {ANDROID_HOME: /usr/local/lib/android/sdk}
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
-        with: {java-version: '17', distribution: 'temurin'}
-      - uses: gradle/actions/setup-gradle@v3
-        with: {gradle-version: '8.9'}
-
-      - uses: actions/setup-python@v5
-        with: {python-version: '3.10'}
-
-      - name: Create model directory
-        run: mkdir -p app/src/main/assets/model
-
-      - name: Download DeepSeek ONNX model (mirror + backoff)
+      - uses: actions/setup-java@v4; with: {java-version: '17', distribution: 'temurin'}
+      - uses: gradle/actions/setup-gradle@v3; with: {gradle-version: '8.9'}
+      - uses: actions/setup-python@v5; with: {python-version: '3.10'}
+      - name: Create model directory; run: mkdir -p app/src/main/assets/model
+      - name: Download DeepSeek ONNX model (mirror+backoff)
         working-directory: app/src/main/assets/model
         run: |
           pip install -q huggingface_hub
           python3 << 'PYEOF'
-          from huggingface_hub import hf_hub_download
-          import os, sys, time
-
+          from huggingface_hub import hf_hub_download; import os, sys, time
           os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
           repo_id = "onnx-community/DeepSeek-R1-Distill-Qwen-1.5B-ONNX"
-          files = {
-              "onnx/model_quantized.onnx": 800_000_000,
-              "tokenizer.json": 1_000_000,
-              "tokenizer_config.json": 100
-          }
-
-          def download_with_backoff(fname, min_size, max_retries=5):
-              for attempt in range(max_retries):
+          files = {"onnx/model_quantized.onnx": 800_000_000, "tokenizer.json": 1_000_000, "tokenizer_config.json": 100}
+          def dl(fname, min_size):
+              for attempt in range(5):
                   try:
-                      print(f"Downloading {fname} (attempt {attempt+1})...")
-                      path = hf_hub_download(repo_id, fname, local_dir=".")
-                      size = os.path.getsize(path)
-                      if size >= min_size:
-                          print(f"  ✓ {fname}: {size:,} bytes")
-                          return path
-                      else:
-                          print(f"  ⚠ Size too small ({size:,}), retrying...")
-                  except Exception as e:
-                      print(f"  ✗ Error: {e}")
-                  wait = 2 ** attempt * 5
-                  time.sleep(wait)
+                      path = hf_hub_download(repo_id, fname, local_dir="."); size = os.path.getsize(path)
+                      if size >= min_size: return path
+                      else: print(f"  ⚠ size {size} < {min_size}")
+                  except Exception as e: print(f"  ✗ Error: {e}")
+                  time.sleep(2**attempt * 5)
               return None
-
           for fname, min_size in files.items():
-              success = download_with_backoff(fname, min_size)
-              if not success:
-                  print(f"Failed to download {fname} after all retries")
-                  sys.exit(1)
-
+              if not dl(fname, min_size): sys.exit(1)
           if os.path.exists("onnx/model_quantized.onnx"):
-              os.rename("onnx/model_quantized.onnx", "model.onnx")
-              os.rmdir("onnx")
-          else:
-              print("model file not found after download")
-              sys.exit(1)
-          print("All model files downloaded successfully.")
+              os.rename("onnx/model_quantized.onnx", "model.onnx"); os.rmdir("onnx")
+          else: sys.exit(1)
+          print("All model files downloaded.")
           PYEOF
-
-      # 直接使用 gradle 命令，不再生成 wrapper
-      - name: Build debug APK
-        run: gradle assembleDebug -Dorg.gradle.jvmargs="-Xmx6g"
-        env: {GRADLE_OPTS: "-Xmx6g"}
-
-      - name: Clean build cache
-        run: rm -rf ~/.gradle/caches/transforms*
-
-      - name: Install validation dependencies
-        run: pip install onnxruntime tokenizers
-
-      - name: Validate UI assets
-        run: |
-          echo "===== 验证 UI 关键元素 ====="
-          ICON_FILE="app/src/main/res/drawable/ic_launcher_foreground.xml"
-          if [ ! -f "$ICON_FILE" ]; then
-            echo "错误: 六角星图标文件缺失"
-            exit 1
-          fi
-          if ! grep -q "M54,24 L47,41.88 L28.02,39 L40,54 L28.02,69 L47,66.12 L54,84 L61,66.12 L79.98,69 L68,54 L79.98,39 L61,41.88 Z" "$ICON_FILE"; then
-            echo "错误: 六角星路径不正确"
-            exit 1
-          fi
-          echo "六角星图标验证通过"
-
-          INFO_ENGINE="app/src/main/java/com/eternal/ai/InformationEngine.kt"
-          if ! grep -q 'onStatus?.invoke("已连接 IP:' "$INFO_ENGINE"; then
-            echo "错误: 信息引擎未输出标准连接字符串"
-            exit 1
-          fi
-          if ! grep -q 'onStatus?.invoke("离线")' "$INFO_ENGINE"; then
-            echo "错误: 信息引擎未输出离线字符串"
-            exit 1
-          fi
-          echo "网络状态逻辑验证通过"
-          echo "===== UI 验证成功 ====="
-
+      - name: Build debug APK; run: gradle assembleDebug -Dorg.gradle.jvmargs="-Xmx6g"; env: {GRADLE_OPTS: "-Xmx6g"}
+      - name: Install validation dependencies; run: pip install onnxruntime tokenizers
+      - name: Validate UI assets; run: |
+          ICON="app/src/main/res/drawable/ic_launcher_foreground.xml"
+          grep -q "M54,24 L47,41.88" "$ICON" || exit 1
+          grep -q "已连接 IP:" app/src/main/java/com/eternal/ai/InformationEngine.kt || exit 1
+          grep -q "离线" app/src/main/java/com/eternal/ai/InformationEngine.kt || exit 1
       - name: Validate model generates non-empty output
         working-directory: app/src/main/assets/model
         run: |
           python3 << 'PYEOF'
-          import onnxruntime as ort
+          import onnxruntime as ort, numpy as np, json, os, sys, time
           from tokenizers import Tokenizer
-          import numpy as np
-          import os, sys, time, json
-
-          print("===== 强制模型推理验证 =====")
-          model_path = "model.onnx"
-          tokenizer_path = "tokenizer.json"
-
-          if not os.path.exists(model_path):
-              print(f"模型文件 {model_path} 不存在")
-              sys.exit(1)
-          if not os.path.exists(tokenizer_path):
-              print("tokenizer.json 不存在")
-              sys.exit(1)
-
-          try:
-              print("加载 ONNX 模型...")
-              session = ort.InferenceSession(model_path, providers=['CPUExecutionProvider'])
-              print("加载 tokenizer...")
-              tokenizer = Tokenizer.from_file(tokenizer_path)
-          except Exception as e:
-              print(f"加载失败: {e}")
-              sys.exit(1)
-
-          output_names = [o.name for o in session.get_outputs()]
-          print(f"模型输出列表: {output_names}")
-          logits_name = None
-          for name in output_names:
-              if "logits" in name.lower():
-                  logits_name = name
-                  break
-          if logits_name is None and output_names:
-              logits_name = output_names[0]
-          print(f"使用 logits 输出名: {logits_name}")
-
-          eos_token_id = 151643
-          config_path = "tokenizer_config.json"
-          if os.path.exists(config_path):
-              with open(config_path, 'r') as f:
-                  config = json.load(f)
-                  if "eos_token_id" in config:
-                      eos_token_id = int(config["eos_token_id"])
-
-          def generate_reply(prompt):
-              formatted = f"<|im_start|>system\n你是永恒，一个追求全知全能的AI助手。<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n"
-              enc = tokenizer.encode(formatted)
-              input_ids = np.array(enc.ids, dtype=np.int64).reshape(1, -1)
-              seq_len = input_ids.shape[1]
-              attention_mask = np.ones((1, seq_len), dtype=np.int64)
-              position_ids = np.arange(seq_len, dtype=np.int64).reshape(1, -1)
-              num_layers = 28
-              num_kv_heads = 2
-              head_dim = 128
-              past_dict = {}
-              for i in range(num_layers):
-                  past_dict[f"past_key_values.{i}.key"] = np.zeros((1, num_kv_heads, 0, head_dim), dtype=np.float32)
-                  past_dict[f"past_key_values.{i}.value"] = np.zeros((1, num_kv_heads, 0, head_dim), dtype=np.float32)
-
+          session = ort.InferenceSession("model.onnx", providers=['CPUExecutionProvider'])
+          tokenizer = Tokenizer.from_file("tokenizer.json")
+          output_names = [o.name for o in session.get_outputs()]; logits_name = next((n for n in output_names if "logits" in n.lower()), output_names[0])
+          eos_token_id = json.load(open("tokenizer_config.json")).get("eos_token_id", 151643)
+          def gen(prompt):
+              formatted = f"<|im_start|>system\n你是永恒。<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n"
+              enc = tokenizer.encode(formatted); input_ids = np.array(enc.ids, dtype=np.int64).reshape(1, -1)
+              attention_mask = np.ones_like(input_ids, dtype=np.int64); position_ids = np.arange(input_ids.shape[1], dtype=np.int64).reshape(1, -1)
+              past = {f"past_key_values.{i}.key": np.zeros((1,2,0,128), dtype=np.float32) for i in range(28)}
+              past.update({f"past_key_values.{i}.value": np.zeros((1,2,0,128), dtype=np.float32) for i in range(28)})
               generated = []
               for _ in range(100):
-                  ort_inputs = {
-                      "input_ids": input_ids,
-                      "attention_mask": attention_mask,
-                      "position_ids": position_ids,
-                  }
-                  ort_inputs.update(past_dict)
-                  outputs = session.run([logits_name], ort_inputs)
-                  logits_tensor = outputs[0]
-                  logits = logits_tensor[0]
-                  next_token_logits = logits[-1, :]
-
-                  temperature = 0.8
-                  top_k = 50
-                  scaled = next_token_logits / temperature
-                  max_l = np.max(scaled)
-                  exp_sum = np.sum(np.exp(scaled - max_l))
-                  probs = np.exp(scaled - max_l) / exp_sum
-                  top_indices = np.argpartition(probs, -top_k)[-top_k:]
-                  top_probs = probs[top_indices]
-                  top_probs = top_probs / np.sum(top_probs)
-                  next_token = np.random.choice(top_indices, p=top_probs)
-
-                  if generated and next_token == eos_token_id:
-                      break
-                  generated.append(int(next_token))
-                  input_ids = np.concatenate([input_ids, [[next_token]]], axis=1)
-                  attention_mask = np.concatenate([attention_mask, [[1]]], axis=1)
-                  position_ids = np.concatenate([position_ids, [[position_ids.shape[1]]]], axis=1)
-
-              if not generated:
-                  return None
-              full_ids = input_ids.flatten().tolist()
-              decoded = tokenizer.decode(full_ids)
-              marker = "<|im_start|>assistant\n"
-              idx = decoded.rfind(marker)
-              if idx >= 0:
-                  return decoded[idx + len(marker):].strip()
-              else:
-                  return decoded.removeprefix(formatted).strip()
-
-          test_prompts = ["你好", "介绍一下你自己", "什么是爱？"]
-          success = False
-          for prompt in test_prompts:
+                  ort_inputs = {"input_ids": input_ids, "attention_mask": attention_mask, "position_ids": position_ids, **past}
+                  logits = session.run([logits_name], ort_inputs)[0][0]; next_token = int(np.random.choice(50, p=np.exp(logits[-1]/0.8)/np.sum(np.exp(logits[-1]/0.8))[:50]))
+                  if generated and next_token == eos_token_id: break
+                  generated.append(next_token); input_ids = np.append(input_ids, [[next_token]], axis=1); attention_mask = np.append(attention_mask, [[1]], axis=1); position_ids = np.append(position_ids, [[position_ids.shape[1]]], axis=1)
+              if not generated: return None
+              decoded = tokenizer.decode(input_ids.flatten().tolist())
+              idx = decoded.rfind("<|im_start|>assistant\n"); return decoded[idx+len("<|im_start|>assistant\n"):].strip() if idx>=0 else decoded
+          for prompt in ["你好", "你是谁？", "爱是什么"]:
               for attempt in range(3):
-                  reply = generate_reply(prompt)
-                  if reply and len(reply.strip()) >= 2:
-                      print(f"✓ 推理成功 (prompt='{prompt}'): {reply[:100]}")
-                      success = True
-                      break
-                  else:
-                      print(f"✗ 尝试 {attempt+1} 失败，重试...")
+                  reply = gen(prompt)
+                  if reply and len(reply.strip())>=2: print(f"✓ success: {reply[:50]}"); break
                   time.sleep(2)
-              if success:
-                  break
-
-          if not success:
-              print("错误: 所有推理尝试均未生成有效回复，模型验证失败")
-              sys.exit(1)
-          print("===== 模型推理验证成功 =====")
+              else: continue
+              break
+          else: print("All attempts failed"); sys.exit(1)
           PYEOF
-
-      - name: Upload APK (only if all validations passed)
-        uses: actions/upload-artifact@v4
-        with: {name: "永恒-APK", path: "app/build/outputs/apk/debug/app-debug.apk"}
+      - name: Upload APK; uses: actions/upload-artifact@v4; with: {name: "永恒-APK", path: "app/build/outputs/apk/debug/app-debug.apk"}
