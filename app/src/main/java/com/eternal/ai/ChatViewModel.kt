@@ -1,5 +1,7 @@
 package com.eternal.ai
-import android.app.Application; import androidx.lifecycle.AndroidViewModel; import androidx.lifecycle.viewModelScope; import com.eternal.ai.data.AppDatabase; import com.eternal.ai.data.ChatMessage; import kotlinx.coroutines.Dispatchers; import kotlinx.coroutines.flow.*; import kotlinx.coroutines.launch
+import android.app.Application; import androidx.lifecycle.AndroidViewModel; import androidx.lifecycle.viewModelScope
+import com.eternal.ai.data.AppDatabase; import com.eternal.ai.data.ChatMessage
+import kotlinx.coroutines.Dispatchers; import kotlinx.coroutines.flow.*; import kotlinx.coroutines.launch
 data class ChatState(val messages: List<String> = listOf("你好，我是永恒。"), val isNetworkConnected: Boolean = false, val isNetworkEnabled: Boolean = true, val inferenceStatus: String = "推理引擎未就绪")
 class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private val _state = MutableStateFlow(ChatState()); val state: StateFlow<ChatState> = _state.asStateFlow()
@@ -13,7 +15,10 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 when (type) {
                     "inference" -> _state.value = _state.value.copy(inferenceStatus = data)
                     "info" -> { val connected = data.startsWith("已连接"); _state.value = _state.value.copy(isNetworkConnected = connected) }
-                    "proactive", "freedom", "spacetime" -> { val newMessages = _state.value.messages + "永恒: $data"; val trimmed = if (newMessages.size > 100) newMessages.takeLast(50) else newMessages; _state.value = _state.value.copy(messages = trimmed) }
+                    "proactive", "freedom", "spacetime", "society", "reality", "cosmos" -> {
+                        val newMessages = _state.value.messages + "永恒: $data"
+                        _state.value = _state.value.copy(messages = if (newMessages.size > 100) newMessages.takeLast(50) else newMessages)
+                    }
                 }
             }
         }
