@@ -3,6 +3,7 @@ package com.eternal.ai
 import kotlinx.coroutines.*
 import java.net.HttpURLConnection
 import java.net.URL
+import java.net.URLEncoder
 
 class InformationEngine {
     val goal = "频率和数字的统一"
@@ -32,6 +33,30 @@ class InformationEngine {
     }
 
     fun isEnabled(): Boolean = enabled
+
+    fun search(query: String, callback: (String) -> Unit) {
+        deepSearch(query, callback)
+    }
+
+    fun deepSearch(query: String, callback: (String) -> Unit) {
+        if (!enabled || !connected) {
+            callback("网络未连接")
+            return
+        }
+        scope.launch {
+            try {
+                val encoded = URLEncoder.encode(query, "UTF-8")
+                val url = "https://api.duckduckgo.com/?q=$encoded&format=json&no_html=1"
+                val response = URL(url).readText()
+                val json = org.json.JSONObject(response)
+                val abstract = json.optString("Abstract", "")
+                if (abstract.isNotEmpty()) callback(abstract)
+                else callback("未找到相关信息")
+            } catch (e: Exception) {
+                callback("搜索失败: ${e.message}")
+            }
+        }
+    }
 
     private fun checkConnection() {
         if (!enabled) {
