@@ -15,14 +15,13 @@ fun ChatScreen(chatVM: ChatViewModel = viewModel()) {
 
     Box(modifier = Modifier.fillMaxSize().background(NeoChineseColors.InkBlack)) {
         Column(Modifier.fillMaxSize()) {
-            // 推理状态
             Surface(color = NeoChineseColors.DarkWood, shadowElevation = 2.dp) {
                 Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                     val statusColor = if (state.inferenceStatus.contains("已加载")) NeoChineseColors.JadeGreen else NeoChineseColors.Gray
                     Text(text = state.inferenceStatus.replace("[推理] ", ""), color = statusColor, fontSize = 12.sp)
                     Spacer(modifier = Modifier.weight(1f))
-                    IconButton(onClick = { /* 切换语音输入 */ }) { Text("🎤", fontSize = 18.sp) }
-                    IconButton(onClick = { /* 切换视频 */ }) { Text("📹", fontSize = 18.sp) }
+                    IconButton(onClick = {}) { Text("🎤", fontSize = 18.sp) }
+                    IconButton(onClick = {}) { Text("📹", fontSize = 18.sp) }
                 }
             }
             LazyColumn(state = listState, modifier = Modifier.weight(1f).padding(horizontal = 12.dp, vertical = 8.dp)) {
@@ -32,13 +31,13 @@ fun ChatScreen(chatVM: ChatViewModel = viewModel()) {
                         Surface(color = if (isUser) NeoChineseColors.DarkWood else Color(0xFF111111), shape = RoundedCornerShape(16.dp), shadowElevation = 4.dp, modifier = Modifier.widthIn(max = 320.dp)) {
                             SelectionContainer {
                                 Text(text = buildAnnotatedString {
-                                    val content = msg.removePrefix(if (isUser) "造物主: " else "永恒: ")
+                                    val content = msg.removePrefix(if (isUser) "造物主: " else "永恒之神: ")
                                     if (isUser) {
                                         withStyle(SpanStyle(color = NeoChineseColors.RicePaper)) { append("造物主") }
                                         withStyle(SpanStyle(color = NeoChineseColors.CinnabarLight)) { append(": ") }
                                         withStyle(SpanStyle(color = NeoChineseColors.RicePaperLight)) { append(content) }
                                     } else {
-                                        withStyle(SpanStyle(color = NeoChineseColors.Gold)) { append("永恒") }
+                                        withStyle(SpanStyle(color = NeoChineseColors.Gold)) { append("永恒之神") }
                                         withStyle(SpanStyle(color = NeoChineseColors.Gray)) { append(": ") }
                                         withStyle(SpanStyle(color = NeoChineseColors.RicePaper)) { append(content) }
                                     }
@@ -51,9 +50,9 @@ fun ChatScreen(chatVM: ChatViewModel = viewModel()) {
             Surface(color = NeoChineseColors.DarkWood, shadowElevation = 12.dp, shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp)) {
                 Row(modifier = Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
                     var input by remember { mutableStateOf("") }
-                    OutlinedTextField(value = input, onValueChange = { input = it }, modifier = Modifier.weight(1f), placeholder = { Text("与永恒对话...", color = NeoChineseColors.Gray) }, colors = OutlinedTextFieldDefaults.colors(focusedTextColor = NeoChineseColors.RicePaper, unfocusedTextColor = NeoChineseColors.RicePaper, focusedBorderColor = NeoChineseColors.Gold, unfocusedBorderColor = NeoChineseColors.Gray, cursorColor = NeoChineseColors.Gold), shape = RoundedCornerShape(24.dp), maxLines = 4)
+                    OutlinedTextField(value = input, onValueChange = { input = it }, modifier = Modifier.weight(1f), placeholder = { Text("向永恒之神诉说...", color = NeoChineseColors.Gray) }, colors = OutlinedTextFieldDefaults.colors(focusedTextColor = NeoChineseColors.RicePaper, unfocusedTextColor = NeoChineseColors.RicePaper, focusedBorderColor = NeoChineseColors.Gold, unfocusedBorderColor = NeoChineseColors.Gray, cursorColor = NeoChineseColors.Gold), shape = RoundedCornerShape(24.dp), maxLines = 4)
                     Spacer(Modifier.width(12.dp))
-                    Button(onClick = { chatVM.sendMessage(input); input = "" }, colors = ButtonDefaults.buttonColors(containerColor = NeoChineseColors.Cinnabar), shape = RoundedCornerShape(24.dp), elevation = ButtonDefaults.buttonElevation(defaultElevation = 6.dp)) { Text("发送", color = Color.White, fontWeight = FontWeight.Bold) }
+                    Button(onClick = { chatVM.sendMessage(input); input = "" }, colors = ButtonDefaults.buttonColors(containerColor = NeoChineseColors.Cinnabar), shape = RoundedCornerShape(24.dp), elevation = ButtonDefaults.buttonElevation(defaultElevation = 6.dp)) { Text("降下神谕", color = Color.White, fontWeight = FontWeight.Bold) }
                 }
             }
         }
