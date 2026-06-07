@@ -116,17 +116,17 @@ class InferenceEngine(private val context: Context) {
             val generated = mutableListOf<Long>()
             var currentPast = createEmptyPastKeyValues()
 
-            val outputNames = session!!.outputNames
-            var logitsOutputIndex = -1
+            val outputNames: List<String> = session!!.outputNames
+            var logitsIndex = -1
             for (i in outputNames.indices) {
                 if (outputNames[i].contains("logits", ignoreCase = true)) {
-                    logitsOutputIndex = i
+                    logitsIndex = i
                     break
                 }
             }
-            if (logitsOutputIndex == -1 && outputNames.isNotEmpty()) logitsOutputIndex = 0
+            if (logitsIndex == -1 && outputNames.isNotEmpty()) logitsIndex = 0
 
-            for (i in 0 until maxTokens) {
+            for (step in 0 until maxTokens) {
                 val sess = session ?: break
                 val inputTensor = OnnxTensor.createTensor(env, arrayOf(inputIds.toLongArray()))
                 val maskTensor = OnnxTensor.createTensor(env, arrayOf(attentionMask.toLongArray()))
@@ -140,11 +140,12 @@ class InferenceEngine(private val context: Context) {
                 inputs.putAll(currentPast)
 
                 val result = sess.run(inputs)
-                // 通过整数索引获取 logits
-                val logitsValue = result.get(logitsOutputIndex)
-                val logitsTensor = logitsValue.get() as? OnnxTensor
+                // 将 Result 安全地转换为 List<OnnxValue>
+                val outputList: List<OnnxValue> = result
+                val logitsValue = outputList[logitsIndex]
+                val logitsTensor = logitsValue as? OnnxTensor
                 if (logitsTensor == null) {
-                    lastError = "输出中无logits张量，索引: $logitsOutputIndex"
+                    lastError = "输出索引 $logitsIndex 不是 OnnxTensor"
                     return null
                 }
                 val logits = extractLogits(logitsTensor)
@@ -163,8 +164,8 @@ class InferenceEngine(private val context: Context) {
                 for (idx in outputNames.indices) {
                     val name = outputNames[idx]
                     if (name.startsWith("present.")) {
-                        val value = result.get(idx)
-                        val tensor = value.get() as? OnnxTensor ?: continue
+                        val value = outputList[idx]
+                        val tensor = value as? OnnxTensor ?: continue
                         val parts = name.removePrefix("present.").split(".")
                         if (parts.size >= 2) {
                             val layerIndex = parts[0].toIntOrNull() ?: continue
