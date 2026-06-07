@@ -15,7 +15,7 @@ jobs:
         with: {python-version: '3.10'}
       - name: Create model directory
         run: mkdir -p app/src/main/assets/model
-      - name: Download DeepSeek ONNX model (with retry)
+      - name: Download DeepSeek ONNX model (mirror + backoff)
         working-directory: app/src/main/assets/model
         run: |
           pip install -q huggingface_hub
@@ -23,6 +23,7 @@ jobs:
           from huggingface_hub import hf_hub_download
           import os, sys, time
 
+          os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
           repo_id = "onnx-community/DeepSeek-R1-Distill-Qwen-1.5B-ONNX"
           files = {
               "onnx/model_quantized.onnx": 800_000_000,
@@ -30,24 +31,27 @@ jobs:
               "tokenizer_config.json": 100
           }
 
-          for fname, min_size in files.items():
-              success = False
-              for attempt in range(3):
+          def download_with_backoff(fname, min_size, max_retries=5):
+              for attempt in range(max_retries):
                   try:
                       print(f"Downloading {fname} (attempt {attempt+1})...")
                       path = hf_hub_download(repo_id, fname, local_dir=".")
                       size = os.path.getsize(path)
                       if size >= min_size:
                           print(f"  ✓ {fname}: {size:,} bytes")
-                          success = True
-                          break
+                          return path
                       else:
                           print(f"  ⚠ Size too small ({size:,}), retrying...")
                   except Exception as e:
                       print(f"  ✗ Error: {e}")
-                      time.sleep(30 * (attempt + 1))
+                  wait = 2 ** attempt * 5
+                  time.sleep(wait)
+              return None
+
+          for fname, min_size in files.items():
+              success = download_with_backoff(fname, min_size)
               if not success:
-                  print(f"Failed to download {fname}")
+                  print(f"Failed to download {fname} after all retries")
                   sys.exit(1)
 
           if os.path.exists("onnx/model_quantized.onnx"):
@@ -129,7 +133,6 @@ jobs:
               print(f"加载失败: {e}")
               sys.exit(1)
 
-          # 获取输出名称
           output_names = [o.name for o in session.get_outputs()]
           print(f"模型输出列表: {output_names}")
           logits_name = None
@@ -138,10 +141,9 @@ jobs:
                   logits_name = name
                   break
           if logits_name is None and output_names:
-              logits_name = output_names[0]  # fallback
+              logits_name = output_names[0]
           print(f"使用 logits 输出名: {logits_name}")
 
-          # 读取 eos_token_id
           eos_token_id = 151643
           config_path = "tokenizer_config.json"
           if os.path.exists(config_path):
@@ -173,10 +175,9 @@ jobs:
                       "position_ids": position_ids,
                   }
                   ort_inputs.update(past_dict)
-                  # 使用指定输出名运行
                   outputs = session.run([logits_name], ort_inputs)
-                  logits_tensor = outputs[0]  # 第一个输出就是 logits
-                  logits = logits_tensor[0]   # batch=0
+                  logits_tensor = outputs[0]
+                  logits = logits_tensor[0]
                   next_token_logits = logits[-1, :]
 
                   temperature = 0.8
