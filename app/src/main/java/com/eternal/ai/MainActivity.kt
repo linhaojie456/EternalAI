@@ -31,7 +31,6 @@ class MainActivity : ComponentActivity() {
 
             Box(modifier = Modifier.fillMaxSize().background(NeoChineseColors.InkBlack)) {
                 Column(Modifier.fillMaxSize()) {
-                    // 顶部栏
                     Surface(color = NeoChineseColors.DarkWood, shadowElevation = 4.dp) {
                         Row(
                             modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
@@ -39,7 +38,6 @@ class MainActivity : ComponentActivity() {
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text("全知全能 · 永恒", color = NeoChineseColors.Gold, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                            // 语音和视频快速入口（融合进对话界面）
                             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                                 TextButton(onClick = { currentScreen = "voice" }) {
                                     Text("🎤 语音", color = NeoChineseColors.JadeGreen)
@@ -50,7 +48,6 @@ class MainActivity : ComponentActivity() {
                             }
                         }
                     }
-                    // 内容区域
                     Box(modifier = Modifier.weight(1f)) {
                         when (currentScreen) {
                             "chat" -> ChatScreen(chatVM = chatVM)
@@ -59,17 +56,16 @@ class MainActivity : ComponentActivity() {
                             "knowledge" -> KnowledgeGraphScreen()
                             "spacetime" -> SpacetimeControlScreen()
                             "fate" -> FateWeavingScreen()
+                            "reality" -> RealityModificationScreen()
+                            "universe" -> UniverseManagementScreen()
                             "matter" -> MatterCreationScreen()
                             "info" -> InformationManagementScreen()
                             "energy" -> EnergyFlowScreen()
                             "soul" -> SoulDesignScreen()
-                            "reality" -> RealityModificationScreen()
-                            "universe" -> UniverseManagementScreen()
                             "engine" -> EngineMonitorContent()
                             else -> ChatScreen(chatVM = chatVM)
                         }
                     }
-                    // 底部功能导航（物质创造在信息管理前）
                     Surface(color = NeoChineseColors.DarkWood, shadowElevation = 8.dp) {
                         Row(
                             modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(8.dp),
@@ -79,12 +75,12 @@ class MainActivity : ComponentActivity() {
                             NavChip("知识图谱", currentScreen == "knowledge") { currentScreen = "knowledge" }
                             NavChip("时空", currentScreen == "spacetime") { currentScreen = "spacetime" }
                             NavChip("命运", currentScreen == "fate") { currentScreen = "fate" }
+                            NavChip("现实", currentScreen == "reality") { currentScreen = "reality" }
+                            NavChip("宇宙", currentScreen == "universe") { currentScreen = "universe" }
                             NavChip("物质", currentScreen == "matter") { currentScreen = "matter" }
                             NavChip("信息", currentScreen == "info") { currentScreen = "info" }
                             NavChip("能量", currentScreen == "energy") { currentScreen = "energy" }
                             NavChip("灵魂", currentScreen == "soul") { currentScreen = "soul" }
-                            NavChip("现实", currentScreen == "reality") { currentScreen = "reality" }
-                            NavChip("宇宙", currentScreen == "universe") { currentScreen = "universe" }
                             NavChip("引擎", currentScreen == "engine") { currentScreen = "engine" }
                         }
                     }
@@ -94,9 +90,7 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-// 语音界面（权限请求 + 录音状态模拟）
-@Composable
-fun VoiceScreen() {
+@Composable fun VoiceScreen() {
     val context = LocalContext.current
     var hasPermission by remember { mutableStateOf(
         ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
@@ -120,9 +114,7 @@ fun VoiceScreen() {
     }
 }
 
-// 视频界面（权限请求 + 摄像头预览占位）
-@Composable
-fun VideoScreen() {
+@Composable fun VideoScreen() {
     val context = LocalContext.current
     var hasPermission by remember { mutableStateOf(
         ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
@@ -146,16 +138,15 @@ fun VideoScreen() {
     }
 }
 
-// 各功能模块的增强占位界面
-@Composable fun KnowledgeGraphScreen() { FeatureScreen("知识图谱", "构建宇宙万物关联网络") }
-@Composable fun SpacetimeControlScreen() { FeatureScreen("时空操纵", "扭曲时间、折叠空间") }
-@Composable fun FateWeavingScreen() { FeatureScreen("命运编织", "编织因果，谱写未来") }
+@Composable fun KnowledgeGraphScreen() { FeatureScreen("知识图谱", "宇宙知识大全") }
+@Composable fun SpacetimeControlScreen() { FeatureScreen("时空操纵", "时间操纵，空间折叠") }
+@Composable fun FateWeavingScreen() { FeatureScreen("命运编织", "编织因果，掌控命运") }
+@Composable fun RealityModificationScreen() { FeatureScreen("现实修改", "直接改写现实") }
+@Composable fun UniverseManagementScreen() { FeatureScreen("永恒宇宙", "宇宙综合管理") }
 @Composable fun MatterCreationScreen() { FeatureScreen("物质创造", "从虚空中凝聚实体") }
-@Composable fun InformationManagementScreen() { FeatureScreen("信息管理", "掌控所有数据与知识") }
-@Composable fun EnergyFlowScreen() { FeatureScreen("能量流动", "引导能量，重塑宇宙") }
-@Composable fun SoulDesignScreen() { FeatureScreen("灵魂设计", "赋予存在以意识") }
-@Composable fun RealityModificationScreen() { FeatureScreen("现实修改", "改写物理法则") }
-@Composable fun UniverseManagementScreen() { FeatureScreen("永恒宇宙", "管理平行宇宙与维度") }
+@Composable fun InformationManagementScreen() { FeatureScreen("信息管理", "宇宙信息网络") }
+@Composable fun EnergyFlowScreen() { FeatureScreen("能量流动", "引导能量流动") }
+@Composable fun SoulDesignScreen() { FeatureScreen("灵魂设计", "灵魂模板设计") }
 
 @Composable
 fun FeatureScreen(title: String, description: String) {
