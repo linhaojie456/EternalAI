@@ -1,10 +1,3 @@
-<vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="108dp"
-    android:height="108dp"
-    android:viewportWidth="108"
-    android:viewportHeight="108">
-    <!-- 金色填充的六角星 -->
-    <path
-        android:fillColor="#D4AF37"
-        android:pathData="M54,24 L47,41.88 L28.02,39 L40,54 L28.02,69 L47,66.12 L54,84 L61,66.12 L79.98,69 L68,54 L79.98,39 L61,41.88 Z" />
+<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
+    <path android:fillColor="#D4AF37" android:pathData="M54,24 L47,41.88 L28.02,39 L40,54 L28.02,69 L47,66.12 L54,84 L61,66.12 L79.98,69 L68,54 L79.98,39 L61,41.88 Z" />
 </vector>
