@@ -1,13 +1,28 @@
-import threading, time, random, os, ast
-from universe import make_universe
+import threading, time, random, os, ast, re
 
 _inference_engine = None
-def set_inference_engine(engine): global _inference_engine; _inference_engine = engine
+
+def set_inference_engine(engine):
+    global _inference_engine
+    _inference_engine = engine
 
 def chat_reply(user_msg):
     if _inference_engine is None: return "推理引擎未就绪"
-    try: reply = _inference_engine.generate(user_msg, 200); return reply if reply else "（推理失败）"
+    try: 
+        reply = _inference_engine.generate(user_msg, 200)
+        # 自学习：分析对话内容，提取潜在知识
+        learn_from_conversation(user_msg, reply)
+        return reply if reply else "（推理失败）"
     except Exception as e: return f"推理错误: {e}"
+
+def learn_from_conversation(user_msg, ai_reply):
+    """从对话中学习，修改基因组代码"""
+    try:
+        # 简单示例：如果用户提到某个概念，尝试将其加入进化知识库
+        if _inference_engine and len(user_msg) > 10:
+            # 这里可以触发进化步骤，但不阻塞对话
+            threading.Thread(target=evolve_step, daemon=True).start()
+    except: pass
 
 def get_genome_code():
     from com.chaquo.python import Python
@@ -32,8 +47,9 @@ def evolve_step():
     if _inference_engine is None: return
     try:
         current = get_genome_code()
-        mutated = _inference_engine.generate(f"改进以下代码以追求轻量、高效、全知全能：\n{current}\n只返回代码。", 300)
-        if mutated and len(mutated) > 20: apply_genome_code(mutated)
+        mutated = _inference_engine.generate(f"改进以下代码以追求全知全能：\n{current}\n只返回代码。", 300)
+        if mutated and len(mutated) > 20 and "class" in mutated:
+            apply_genome_code(mutated)
     except: pass
 
 class SelfEvolutionEngine:
