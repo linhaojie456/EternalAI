@@ -140,8 +140,8 @@ class InferenceEngine(private val context: Context) {
                 )
                 inputs.putAll(currentPast)
 
-                val outputs = sess.run(inputs)  // 返回 List<OnnxValue>，顺序与 outputNames 一致
-                val logitsTensor = outputs[logitsOutputIndex] as? OnnxTensor
+                val outputs = sess.run(inputs)  // 返回 List<OnnxValue>
+                val logitsTensor = outputs.get(logitsOutputIndex) as? OnnxTensor
                 if (logitsTensor == null) {
                     lastError = "输出中无logits张量"
                     return null
@@ -162,7 +162,7 @@ class InferenceEngine(private val context: Context) {
                 for (idx in outputNames.indices) {
                     val name = outputNames[idx]
                     if (name.startsWith("present.")) {
-                        val tensor = outputs[idx] as? OnnxTensor ?: continue
+                        val tensor = outputs.get(idx) as? OnnxTensor ?: continue
                         val parts = name.removePrefix("present.").split(".")
                         if (parts.size >= 2) {
                             val layerIndex = parts[0].toIntOrNull() ?: continue
