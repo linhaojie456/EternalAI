@@ -117,16 +117,14 @@ class InferenceEngine(private val context: Context) {
             var currentPast = createEmptyPastKeyValues()
 
             val outputNames = session!!.outputNames
-            var logitsOutputName: String? = null
-            for (name in outputNames) {
-                if (name.contains("logits", ignoreCase = true)) {
-                    logitsOutputName = name
+            var logitsOutputIndex = -1
+            for (i in outputNames.indices) {
+                if (outputNames[i].contains("logits", ignoreCase = true)) {
+                    logitsOutputIndex = i
                     break
                 }
             }
-            if (logitsOutputName == null && outputNames.isNotEmpty()) {
-                logitsOutputName = outputNames[0]
-            }
+            if (logitsOutputIndex == -1 && outputNames.isNotEmpty()) logitsOutputIndex = 0
 
             for (i in 0 until maxTokens) {
                 val sess = session ?: break
@@ -141,10 +139,12 @@ class InferenceEngine(private val context: Context) {
                 )
                 inputs.putAll(currentPast)
 
-                val outputs = sess.run(inputs)
-                val logitsTensor = findValueByName(outputs, logitsOutputName!!) as? OnnxTensor
+                val result = sess.run(inputs)
+                // 通过整数索引获取 logits
+                val logitsValue = result.get(logitsOutputIndex)
+                val logitsTensor = logitsValue.get() as? OnnxTensor
                 if (logitsTensor == null) {
-                    lastError = "输出中无logits张量，输出名称: $logitsOutputName"
+                    lastError = "输出中无logits张量，索引: $logitsOutputIndex"
                     return null
                 }
                 val logits = extractLogits(logitsTensor)
@@ -158,10 +158,13 @@ class InferenceEngine(private val context: Context) {
                 generated.add(nextToken)
                 inputIds.add(nextToken); attentionMask.add(1L); positionIds.add(positionIds.size.toLong())
 
+                // 更新 past_key_values
                 val newPast = mutableMapOf<String, OnnxTensor>()
-                for (name in outputNames) {
+                for (idx in outputNames.indices) {
+                    val name = outputNames[idx]
                     if (name.startsWith("present.")) {
-                        val tensor = findValueByName(outputs, name) as? OnnxTensor ?: continue
+                        val value = result.get(idx)
+                        val tensor = value.get() as? OnnxTensor ?: continue
                         val parts = name.removePrefix("present.").split(".")
                         if (parts.size >= 2) {
                             val layerIndex = parts[0].toIntOrNull() ?: continue
@@ -183,16 +186,6 @@ class InferenceEngine(private val context: Context) {
             val idx = rawOutput.lastIndexOf(marker)
             return if (idx >= 0) rawOutput.substring(idx + marker.length).trim() else rawOutput.removePrefix(formattedPrompt).trim()
         } catch (e: Exception) { lastError = "推理异常: ${e.message}"; return null }
-    }
-
-    // 辅助方法，通过遍历 Result 的键来获取值，避免直接使用有问题的 Map 接口
-    private fun findValueByName(result: OrtSession.Result, name: String): OnnxValue? {
-        for (key in result.keys) {
-            if (key == name) {
-                return result.get(key)
-            }
-        }
-        return null
     }
 
     fun start(coordinator: EngineCoordinator, onStatus: (String) -> Unit) {
