@@ -15,15 +15,14 @@ fun ChatScreen(chatVM: ChatViewModel = viewModel()) {
 
     Box(modifier = Modifier.fillMaxSize().background(NeoChineseColors.InkBlack)) {
         Column(Modifier.fillMaxSize()) {
-            // 推理状态提示
+            // 推理状态
             Surface(color = NeoChineseColors.DarkWood, shadowElevation = 2.dp) {
                 Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                     val statusColor = if (state.inferenceStatus.contains("已加载")) NeoChineseColors.JadeGreen else NeoChineseColors.Gray
                     Text(text = state.inferenceStatus.replace("[推理] ", ""), color = statusColor, fontSize = 12.sp)
                     Spacer(modifier = Modifier.weight(1f))
-                    // 快速语音/视频入口
-                    TextButton(onClick = { /* 语音 */ }) { Text("🎤", fontSize = 18.sp) }
-                    TextButton(onClick = { /* 视频 */ }) { Text("📹", fontSize = 18.sp) }
+                    IconButton(onClick = { /* 切换语音输入 */ }) { Text("🎤", fontSize = 18.sp) }
+                    IconButton(onClick = { /* 切换视频 */ }) { Text("📹", fontSize = 18.sp) }
                 }
             }
             LazyColumn(state = listState, modifier = Modifier.weight(1f).padding(horizontal = 12.dp, vertical = 8.dp)) {
