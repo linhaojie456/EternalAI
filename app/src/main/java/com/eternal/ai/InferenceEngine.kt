@@ -132,7 +132,7 @@ class InferenceEngine(private val context: Context) {
                 val outputs = sess.run(inputs)
                 // 动态遍历所有输出寻找 logits 张量
                 var logitsTensor: OnnxTensor? = null
-                for ((key, value) in outputs) {
+                for ((key, value) in outputs.entries) {
                     if (key.contains("logits", ignoreCase = true) && value is OnnxTensor) {
                         logitsTensor = value
                         break
@@ -154,7 +154,7 @@ class InferenceEngine(private val context: Context) {
                 inputIds.add(nextToken); attentionMask.add(1L); positionIds.add(positionIds.size.toLong())
 
                 val newPast = mutableMapOf<String, OnnxTensor>()
-                for ((key, value) in outputs) {
+                for ((key, value) in outputs.entries) {
                     if (key.startsWith("present.")) {
                         val tensor = value as? OnnxTensor ?: continue
                         val parts = key.removePrefix("present.").split(".")
