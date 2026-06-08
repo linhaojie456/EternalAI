@@ -20,7 +20,7 @@ class InferenceEngine(private val context: Context) {
     private var headDim: Int = 128
     private var numLayers: Int = 28
 
-    // attention_mask 的预期形状（动态获取）
+    // 保存attention_mask的动态形状（直接从模型信息获取）
     private var attentionMaskShape: LongArray? = null
 
     var isModelLoaded = false
@@ -37,16 +37,16 @@ class InferenceEngine(private val context: Context) {
             val options = OrtSession.SessionOptions()
             session = env.createSession(modelFile.absolutePath, options)
 
-            // 获取 attention_mask 的预期形状
+            // 获取attention_mask的预期形状
             for (input in session!!.inputInfo.values) {
                 if (input.name == "attention_mask") {
                     val tensorInfo = input.info as? TensorInfo
+                    // 关键修复：使用tensorInfo.shape来获取形状，返回的是LongArray?
                     attentionMaskShape = tensorInfo?.shape?.toLongArray()
                     break
                 }
             }
 
-            // 获取 KV 缓存参数
             val inputInfo = session!!.inputInfo
             var maxLayerIndex = -1
             for ((name, nodeInfo) in inputInfo) {
@@ -96,7 +96,9 @@ class InferenceEngine(private val context: Context) {
 
     private fun createAttentionMaskTensor(seqLen: Int): OnnxTensor {
         val shape = attentionMaskShape?.clone() ?: longArrayOf(1L, seqLen.toLong())
+        // 替换动态维度
         for (i in shape.indices) { if (shape[i] <= 0L) shape[i] = seqLen.toLong() }
+        // 确保batch维度为1
         if (shape.isNotEmpty()) shape[0] = 1L
         val elementCount = shape.fold(1L) { acc, l -> acc * l }.toInt()
         val buf = FloatBuffer.allocate(elementCount)
