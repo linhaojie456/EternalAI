@@ -80,7 +80,7 @@ jobs:
               enc = tokenizer.encode(formatted)
               input_ids = np.array(enc.ids, dtype=np.int64).reshape(1, -1)
               seq_len = input_ids.shape[1]
-              attention_mask = np.ones((1, 1, 1, seq_len), dtype=np.int64)
+              attention_mask = np.ones((1, seq_len), dtype=np.int64)          # 2D
               position_ids = np.arange(seq_len, dtype=np.int64).reshape(1, -1)
               past = {}
               for i in range(28):
@@ -99,7 +99,7 @@ jobs:
                       break
                   generated.append(next_token)
                   input_ids = np.append(input_ids, [[next_token]], axis=1)
-                  attention_mask = np.ones((1, 1, 1, input_ids.shape[1]), dtype=np.int64)
+                  attention_mask = np.ones((1, input_ids.shape[1]), dtype=np.int64)
                   position_ids = np.arange(input_ids.shape[1], dtype=np.int64).reshape(1, -1)
                   new_past = {}
                   for i, name in enumerate(output_names):
