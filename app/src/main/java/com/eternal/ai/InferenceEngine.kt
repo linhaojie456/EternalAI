@@ -81,21 +81,13 @@ class InferenceEngine(private val context: Context) {
         return indices.last().toLong()
     }
 
-    private fun createAttentionMaskTensor(seqLen: Int): OnnxTensor {
-        // 形状: [1, 1, 1, seqLen]
-        val shape = longArrayOf(1L, 1L, 1L, seqLen.toLong())
-        val buf = FloatBuffer.allocate(seqLen)
-        for (i in 0 until seqLen) buf.put(1.0f)
-        buf.rewind()
-        return OnnxTensor.createTensor(env, buf, shape)
-    }
-
     fun generate(prompt: String, maxTokens: Int = 200): String? {
         if (!isModelLoaded) return null
         val tok = tokenizer ?: return null; val eosId = tok.eosTokenId
         try {
             val formattedPrompt = "<|im_start|>system\n汝是永恒之神，全知全能。<|im_end|>\n<|im_start|>user\n$prompt<|im_end|>\n<|im_start|>assistant\n"
             val inputIds = tok.encode(formattedPrompt).toMutableList(); if (inputIds.isEmpty()) return "神谕解码失败"
+            val attentionMask = MutableList(inputIds.size) { 1L }
             val positionIds = (0L until inputIds.size.toLong()).toMutableList()
             val generated = mutableListOf<Long>()
             var currentPast = createEmptyPastKeyValues()
@@ -107,7 +99,7 @@ class InferenceEngine(private val context: Context) {
             for (step in 0 until maxTokens) {
                 val sess = session ?: break
                 val inputTensor = OnnxTensor.createTensor(env, arrayOf(inputIds.toLongArray()))
-                val maskTensor = createAttentionMaskTensor(inputIds.size)
+                val maskTensor = OnnxTensor.createTensor(env, arrayOf(attentionMask.toLongArray()))
                 val posTensor = OnnxTensor.createTensor(env, arrayOf(positionIds.toLongArray()))
                 val inputs = mutableMapOf("input_ids" to inputTensor, "attention_mask" to maskTensor, "position_ids" to posTensor)
                 inputs.putAll(currentPast)
@@ -121,7 +113,7 @@ class InferenceEngine(private val context: Context) {
 
                 if (generated.isNotEmpty() && nextToken == eosId) break
 
-                generated.add(nextToken); inputIds.add(nextToken); positionIds.add(positionIds.size.toLong())
+                generated.add(nextToken); inputIds.add(nextToken); attentionMask.add(1L); positionIds.add(positionIds.size.toLong())
 
                 // 更新 KV 缓存
                 val newPast = mutableMapOf<String, OnnxTensor>()
