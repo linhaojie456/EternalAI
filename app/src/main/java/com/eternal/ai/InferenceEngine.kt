@@ -97,15 +97,8 @@ class InferenceEngine(private val context: Context) {
 
             for (step in 0 until maxTokens) {
                 val sess = session ?: break
-                // 关键：attention_mask 必须是 [1, 1, 1, seq_len] 才能通过 Expand 节点
-                val seqLen = inputIds.size
-                val maskShape = longArrayOf(1L, 1L, 1L, seqLen.toLong())
-                val maskBuf = FloatBuffer.allocate(seqLen)
-                for (v in attentionMask) maskBuf.put(v.toFloat())
-                maskBuf.rewind()
-                val maskTensor = OnnxTensor.createTensor(env, maskBuf, maskShape)
-                
                 val inputTensor = OnnxTensor.createTensor(env, arrayOf(inputIds.toLongArray()))
+                val maskTensor = OnnxTensor.createTensor(env, arrayOf(attentionMask.toLongArray()))
                 val posTensor = OnnxTensor.createTensor(env, arrayOf(positionIds.toLongArray()))
                 val inputs = mutableMapOf("input_ids" to inputTensor, "attention_mask" to maskTensor, "position_ids" to posTensor)
                 inputs.putAll(currentPast)
