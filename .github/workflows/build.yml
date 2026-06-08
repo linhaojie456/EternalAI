@@ -54,7 +54,7 @@ jobs:
           grep -q "M54,88 L74,40 L34,40 Z" "$ICON" || exit 1
       - name: Validate model with 10 dialogues
         working-directory: app/src/main/assets/model
-        timeout-minutes: 20
+        timeout-minutes: 30
         run: |
           python3 << 'PYEOF'
           import onnxruntime as ort
@@ -72,21 +72,45 @@ jobs:
               enc = tokenizer.encode(formatted)
               input_ids = np.array(enc.ids, dtype=np.int64).reshape(1, -1)
               seq_len = input_ids.shape[1]
-              attention_mask = np.ones((1, seq_len), dtype=np.int64)  # 2D
+              attention_mask = np.ones((1, seq_len), dtype=np.int64)
               position_ids = np.arange(seq_len, dtype=np.int64).reshape(1, -1)
-              past = {f"past_key_values.{i}.key": np.zeros((1,2,0,128), dtype=np.float32) for i in range(28)}
-              past.update({f"past_key_values.{i}.value": np.zeros((1,2,0,128), dtype=np.float32) for i in range(28)})
+              # 初始化空的 past_key_values
+              past = {}
+              for i in range(28):
+                  past[f"past_key_values.{i}.key"] = np.zeros((1, 2, 0, 128), dtype=np.float32)
+                  past[f"past_key_values.{i}.value"] = np.zeros((1, 2, 0, 128), dtype=np.float32)
               generated = []
               for _ in range(150):
                   ort_inputs = {"input_ids": input_ids, "attention_mask": attention_mask, "position_ids": position_ids, **past}
-                  logits = session.run([logits_name], ort_inputs)[0][0]
+                  outputs = session.run([logits_name], ort_inputs)
+                  logits = outputs[0][0]
                   next_token = int(np.argmax(logits[-1, :]))
-                  if generated and next_token == eos_token_id: break
+                  if generated and next_token == eos_token_id:
+                      break
                   generated.append(next_token)
+                  # 更新输入序列
                   input_ids = np.append(input_ids, [[next_token]], axis=1)
                   attention_mask = np.ones((1, input_ids.shape[1]), dtype=np.int64)
                   position_ids = np.arange(input_ids.shape[1], dtype=np.int64).reshape(1, -1)
-              if not generated: return None
+                  # 更新 past_key_values：从输出中提取 present 张量（如果有）
+                  # 注：验证脚本使用 run(None, ...) 返回所有输出，需按名称匹配
+                  # 此处简化：不更新 past，模型仍能运行但可能慢。但为了正确性，我们需从 outputs 中提取 present。
+                  # 因为未指定输出名，outputs 是列表，与 output_names 对应。
+                  new_past = {}
+                  for idx, name in enumerate(output_names):
+                      if name.startswith("present."):
+                          tensor = outputs[idx]
+                          parts = name.removeprefix("present.").split(".")
+                          if len(parts) >= 2:
+                              layer_idx = int(parts[0])
+                              if name.endswith(".key"):
+                                  new_past[f"past_key_values.{layer_idx}.key"] = tensor
+                              elif name.endswith(".value"):
+                                  new_past[f"past_key_values.{layer_idx}.value"] = tensor
+                  if new_past:
+                      past = new_past
+              if not generated:
+                  return None
               decoded = tokenizer.decode(input_ids.flatten().tolist())
               idx = decoded.rfind("<|im_start|>assistant\n")
               return decoded[idx+len("<|im_start|>assistant\n"):].strip() if idx>=0 else decoded

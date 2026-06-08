@@ -89,7 +89,8 @@ class InferenceEngine(private val context: Context) {
             val inputIds = tok.encode(formattedPrompt).toMutableList(); if (inputIds.isEmpty()) return "神谕解码失败"
             val attentionMask = MutableList(inputIds.size) { 1L }
             val positionIds = (0L until inputIds.size.toLong()).toMutableList()
-            val generated = mutableListOf<Long>(); var currentPast = createEmptyPastKeyValues()
+            val generated = mutableListOf<Long>()
+            var currentPast = createEmptyPastKeyValues()
 
             val outputNames: List<String> = session!!.outputNames.toList(); var logitsIndex = -1
             for (i in outputNames.indices) { if (outputNames[i].contains("logits", ignoreCase = true)) { logitsIndex = i; break } }
@@ -114,17 +115,27 @@ class InferenceEngine(private val context: Context) {
 
                 generated.add(nextToken); inputIds.add(nextToken); attentionMask.add(1L); positionIds.add(positionIds.size.toLong())
 
-                // 更新 KV 缓存
+                // 更新 past_key_values：从输出中提取 present 张量
                 val newPast = mutableMapOf<String, OnnxTensor>()
                 for (idx in outputNames.indices) {
                     val name = outputNames[idx]
                     if (name.startsWith("present.")) {
-                        val value = result.get(idx); val tensor = value as? OnnxTensor ?: continue
+                        val value: OnnxValue = result.get(idx)
+                        val tensor = value as? OnnxTensor ?: continue
                         val parts = name.removePrefix("present.").split(".")
-                        if (parts.size >= 2) { val layerIndex = parts[0].toIntOrNull() ?: continue; if (name.endsWith(".key")) newPast["past_key_values.$layerIndex.key"] = tensor else if (name.endsWith(".value")) newPast["past_key_values.$layerIndex.value"] = tensor }
+                        if (parts.size >= 2) {
+                            val layerIndex = parts[0].toIntOrNull() ?: continue
+                            if (name.endsWith(".key")) {
+                                newPast["past_key_values.$layerIndex.key"] = tensor
+                            } else if (name.endsWith(".value")) {
+                                newPast["past_key_values.$layerIndex.value"] = tensor
+                            }
+                        }
                     }
                 }
-                if (newPast.isNotEmpty()) currentPast = newPast
+                if (newPast.isNotEmpty()) {
+                    currentPast = newPast
+                }
             }
 
             if (generated.isEmpty()) { lastError = "神谕未生成"; return null }
