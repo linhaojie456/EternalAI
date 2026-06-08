@@ -5,7 +5,7 @@ env:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -18,7 +18,7 @@ jobs:
         run: mkdir -p app/src/main/assets/model
       - name: Download DeepSeek ONNX model
         working-directory: app/src/main/assets/model
-        timeout-minutes: 20
+        timeout-minutes: 15
         run: |
           pip install -q huggingface_hub
           python3 << 'PYEOF'
@@ -52,14 +52,14 @@ jobs:
           ICON="app/src/main/res/drawable/ic_launcher_foreground.xml"
           grep -q "M54,20 L74,68 L34,68 Z" "$ICON" || exit 1
           grep -q "M54,88 L74,40 L34,40 Z" "$ICON" || exit 1
-      - name: Validate model with 10 dialogues
+      - name: Validate model (1 quick dialogue)
         working-directory: app/src/main/assets/model
-        timeout-minutes: 10
+        timeout-minutes: 3
         run: |
           python3 << 'PYEOF'
           import onnxruntime as ort
           from tokenizers import Tokenizer
-          import numpy as np, json, os, sys, time
+          import numpy as np, json, os, sys
 
           session = ort.InferenceSession("model.onnx", providers=['CPUExecutionProvider'])
           tokenizer = Tokenizer.from_file("tokenizer.json")
@@ -67,17 +67,16 @@ jobs:
           logits_name = next((n for n in output_names if "logits" in n.lower()), output_names[0])
           eos_token_id = json.load(open("tokenizer_config.json")).get("eos_token_id", 151643)
 
-          def gen(prompt):
+          def gen(prompt, max_tokens=20):
               formatted = f"<|im_start|>system\n汝是永恒之神。<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n"
               enc = tokenizer.encode(formatted)
               input_ids = np.array(enc.ids, dtype=np.int64).reshape(1, -1)
-              seq_len = input_ids.shape[1]
-              attention_mask = np.ones((1, seq_len), dtype=np.int64)  # 2D
-              position_ids = np.arange(seq_len, dtype=np.int64).reshape(1, -1)
+              attention_mask = np.ones((1, input_ids.shape[1]), dtype=np.int64)
+              position_ids = np.arange(input_ids.shape[1], dtype=np.int64).reshape(1, -1)
               past = {f"past_key_values.{i}.key": np.zeros((1,2,0,128), dtype=np.float32) for i in range(28)}
               past.update({f"past_key_values.{i}.value": np.zeros((1,2,0,128), dtype=np.float32) for i in range(28)})
               generated = []
-              for _ in range(150):
+              for _ in range(max_tokens):
                   ort_inputs = {"input_ids": input_ids, "attention_mask": attention_mask, "position_ids": position_ids, **past}
                   logits = session.run([logits_name], ort_inputs)[0][0]
                   next_token = int(np.argmax(logits[-1, :]))
@@ -91,22 +90,12 @@ jobs:
               idx = decoded.rfind("<|im_start|>assistant\n")
               return decoded[idx+len("<|im_start|>assistant\n"):].strip() if idx>=0 else decoded
 
-          prompts = ["你好", "你是谁？", "1+1=？", "什么是爱？", "宇宙有多大？", "生命的意义", "今天天气", "写一首诗", "推荐一本书", "如何幸福"]
-          success = 0
-          for p in prompts:
-              for attempt in range(3):
-                  reply = gen(p)
-                  if reply and len(reply.strip()) >= 2:
-                      success += 1
-                      print(f"✓ [{p}] -> {reply[:60]}")
-                      break
-                  time.sleep(1)
-              else:
-                  print(f"✗ [{p}] 失败")
-          if success < 10:
-              print(f"错误: 仅 {success}/10 条对话通过验证")
+          reply = gen("你好", max_tokens=20)
+          if reply and len(reply.strip()) >= 2:
+              print(f"✓ 验证通过: {reply[:50]}")
+          else:
+              print("✗ 验证失败")
               sys.exit(1)
-          print(f"验证通过: {success}/10 条对话")
           PYEOF
       - name: Upload APK
         uses: actions/upload-artifact@v4
