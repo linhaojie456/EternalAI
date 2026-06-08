@@ -68,19 +68,29 @@ jobs:
           logits_index = output_names.index(logits_name)
           eos_token_id = json.load(open("tokenizer_config.json")).get("eos_token_id", 151643)
 
+          # 动态获取 past 形状
+          past_key_dims = {}
+          for inp in session.get_inputs():
+              if inp.name.startswith("past_key_values."):
+                  shape = inp.shape
+                  past_key_dims[inp.name] = (int(shape[1]), int(shape[3]))
+
           def gen(prompt):
               formatted = f"<|im_start|>system\n汝是永恒之神。<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n"
               enc = tokenizer.encode(formatted)
               input_ids = np.array(enc.ids, dtype=np.int64).reshape(1, -1)
               seq_len = input_ids.shape[1]
+              attention_mask = np.ones((1, seq_len), dtype=np.int64)
               position_ids = np.arange(seq_len, dtype=np.int64).reshape(1, -1)
               past = {}
               for i in range(28):
-                  past[f"past_key_values.{i}.key"] = np.zeros((1, 2, 0, 128), dtype=np.float32)
-                  past[f"past_key_values.{i}.value"] = np.zeros((1, 2, 0, 128), dtype=np.float32)
+                  heads = past_key_dims.get(f"past_key_values.{i}.key", (2,))[0]
+                  head_dim = past_key_dims.get(f"past_key_values.{i}.key", (0, 128))[1]
+                  past[f"past_key_values.{i}.key"] = np.zeros((1, heads, 0, head_dim), dtype=np.float32)
+                  past[f"past_key_values.{i}.value"] = np.zeros((1, heads, 0, head_dim), dtype=np.float32)
               generated = []
               for _ in range(150):
-                  ort_inputs = {"input_ids": input_ids, "position_ids": position_ids, **past}
+                  ort_inputs = {"input_ids": input_ids, "attention_mask": attention_mask, "position_ids": position_ids, **past}
                   outputs = session.run(output_names, ort_inputs)
                   logits = outputs[logits_index][0]
                   next_token = int(np.argmax(logits[-1, :]))
@@ -88,6 +98,7 @@ jobs:
                       break
                   generated.append(next_token)
                   input_ids = np.append(input_ids, [[next_token]], axis=1)
+                  attention_mask = np.ones((1, input_ids.shape[1]), dtype=np.int64)
                   position_ids = np.arange(input_ids.shape[1], dtype=np.int64).reshape(1, -1)
                   new_past = {}
                   for i, name in enumerate(output_names):
