@@ -20,7 +20,7 @@ class InferenceEngine(private val context: Context) {
     private var headDim: Int = 128
     private var numLayers: Int = 28
 
-    // 动态记录的 attention_mask 形状信息
+    // attention_mask 的预期形状（动态获取）
     private var attentionMaskShape: LongArray? = null
 
     var isModelLoaded = false
@@ -40,7 +40,8 @@ class InferenceEngine(private val context: Context) {
             // 获取 attention_mask 的预期形状
             for (input in session!!.inputInfo.values) {
                 if (input.name == "attention_mask") {
-                    attentionMaskShape = input.info?.getShape()?.toLongArray()
+                    val tensorInfo = input.info as? TensorInfo
+                    attentionMaskShape = tensorInfo?.shape?.toLongArray()
                     break
                 }
             }
@@ -50,8 +51,8 @@ class InferenceEngine(private val context: Context) {
             var maxLayerIndex = -1
             for ((name, nodeInfo) in inputInfo) {
                 if (name.startsWith("past_key_values.")) {
-                    val tensorInfo = nodeInfo.getInfo() as? TensorInfo
-                    val shape = tensorInfo?.getShape()
+                    val tensorInfo = nodeInfo.info as? TensorInfo
+                    val shape = tensorInfo?.shape
                     if (shape != null && shape.size >= 4) { numKVHeads = shape[1].toInt(); headDim = shape[3].toInt() }
                     val parts = name.split(".")
                     if (parts.size >= 3) { val layerIndex = parts[2].toIntOrNull() ?: continue; if (layerIndex > maxLayerIndex) maxLayerIndex = layerIndex }
@@ -95,14 +96,8 @@ class InferenceEngine(private val context: Context) {
 
     private fun createAttentionMaskTensor(seqLen: Int): OnnxTensor {
         val shape = attentionMaskShape?.clone() ?: longArrayOf(1L, seqLen.toLong())
-        // 替换动态维度 (-1) 为实际值
-        for (i in shape.indices) {
-            if (shape[i] <= 0L) shape[i] = seqLen.toLong()
-        }
-        // 确保 batch 维度为 1
+        for (i in shape.indices) { if (shape[i] <= 0L) shape[i] = seqLen.toLong() }
         if (shape.isNotEmpty()) shape[0] = 1L
-        
-        // 计算元素总数
         val elementCount = shape.fold(1L) { acc, l -> acc * l }.toInt()
         val buf = FloatBuffer.allocate(elementCount)
         for (i in 0 until elementCount) buf.put(1.0f)
@@ -145,7 +140,6 @@ class InferenceEngine(private val context: Context) {
 
                 generated.add(nextToken); inputIds.add(nextToken); positionIds.add(positionIds.size.toLong())
 
-                // 更新 KV 缓存
                 val newPast = mutableMapOf<String, OnnxTensor>()
                 for (idx in outputNames.indices) {
                     val name = outputNames[idx]
