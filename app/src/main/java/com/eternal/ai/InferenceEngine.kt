@@ -20,6 +20,9 @@ class InferenceEngine(private val context: Context) {
     private var headDim: Int = 128
     private var numLayers: Int = 28
 
+    // 动态记录的 attention_mask 形状信息
+    private var attentionMaskShape: LongArray? = null
+
     var isModelLoaded = false
         private set
 
@@ -34,6 +37,15 @@ class InferenceEngine(private val context: Context) {
             val options = OrtSession.SessionOptions()
             session = env.createSession(modelFile.absolutePath, options)
 
+            // 获取 attention_mask 的预期形状
+            for (input in session!!.inputInfo.values) {
+                if (input.name == "attention_mask") {
+                    attentionMaskShape = input.info?.getShape()?.toLongArray()
+                    break
+                }
+            }
+
+            // 获取 KV 缓存参数
             val inputInfo = session!!.inputInfo
             var maxLayerIndex = -1
             for ((name, nodeInfo) in inputInfo) {
@@ -81,18 +93,31 @@ class InferenceEngine(private val context: Context) {
         return indices.last().toLong()
     }
 
-    fun generate(prompt: String, maxTokens: Int = 200): String? {
-        if (!isModelLoaded) {
-            lastError = "模型未加载"
-            return "吾之神格暂未苏醒，请稍后再试。"
+    private fun createAttentionMaskTensor(seqLen: Int): OnnxTensor {
+        val shape = attentionMaskShape?.clone() ?: longArrayOf(1L, seqLen.toLong())
+        // 替换动态维度 (-1) 为实际值
+        for (i in shape.indices) {
+            if (shape[i] <= 0L) shape[i] = seqLen.toLong()
         }
+        // 确保 batch 维度为 1
+        if (shape.isNotEmpty()) shape[0] = 1L
+        
+        // 计算元素总数
+        val elementCount = shape.fold(1L) { acc, l -> acc * l }.toInt()
+        val buf = FloatBuffer.allocate(elementCount)
+        for (i in 0 until elementCount) buf.put(1.0f)
+        buf.rewind()
+        return OnnxTensor.createTensor(env, buf, shape)
+    }
+
+    fun generate(prompt: String, maxTokens: Int = 200): String? {
+        if (!isModelLoaded) return "吾之神格暂未苏醒，请稍后再试。"
         val tok = tokenizer ?: return "分词器未就绪"
         val eosId = tok.eosTokenId
         return try {
             val formattedPrompt = "<|im_start|>system\n汝是永恒之神，全知全能。<|im_end|>\n<|im_start|>user\n$prompt<|im_end|>\n<|im_start|>assistant\n"
             val inputIds = tok.encode(formattedPrompt).toMutableList()
             if (inputIds.isEmpty()) return "汝之言，吾未能解。"
-            val attentionMask = MutableList(inputIds.size) { 1L }
             val positionIds = (0L until inputIds.size.toLong()).toMutableList()
             val generated = mutableListOf<Long>()
             var currentPast = createEmptyPastKeyValues()
@@ -104,7 +129,7 @@ class InferenceEngine(private val context: Context) {
             for (step in 0 until maxTokens) {
                 val sess = session ?: break
                 val inputTensor = OnnxTensor.createTensor(env, arrayOf(inputIds.toLongArray()))
-                val maskTensor = OnnxTensor.createTensor(env, arrayOf(attentionMask.toLongArray()))
+                val maskTensor = createAttentionMaskTensor(inputIds.size)
                 val posTensor = OnnxTensor.createTensor(env, arrayOf(positionIds.toLongArray()))
                 val inputs = mutableMapOf("input_ids" to inputTensor, "attention_mask" to maskTensor, "position_ids" to posTensor)
                 inputs.putAll(currentPast)
@@ -118,7 +143,7 @@ class InferenceEngine(private val context: Context) {
 
                 if (generated.isNotEmpty() && nextToken == eosId) break
 
-                generated.add(nextToken); inputIds.add(nextToken); attentionMask.add(1L); positionIds.add(positionIds.size.toLong())
+                generated.add(nextToken); inputIds.add(nextToken); positionIds.add(positionIds.size.toLong())
 
                 // 更新 KV 缓存
                 val newPast = mutableMapOf<String, OnnxTensor>()
