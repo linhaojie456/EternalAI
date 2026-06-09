@@ -81,7 +81,6 @@ class InferenceEngine(private val context: Context) {
                 return false
             }
 
-            // 快速测试：编码一个测试字符串
             val testIds = tokenizer!!.encode("测试")
             if (testIds.isEmpty()) {
                 initError = "分词器测试失败"
@@ -113,31 +112,50 @@ class InferenceEngine(private val context: Context) {
     private fun createEmptyPastKeyValues(): Map<String, OnnxTensor> {
         val shape = longArrayOf(1L, numKVHeads.toLong(), 0L, headDim.toLong())
         val map = mutableMapOf<String, OnnxTensor>()
-        for (i in 0 until numLayers) { val buf = FloatBuffer.allocate(0); map["past_key_values.$i.key"] = OnnxTensor.createTensor(env, buf, shape); map["past_key_values.$i.value"] = OnnxTensor.createTensor(env, buf, shape) }
+        for (i in 0 until numLayers) {
+            val buf = FloatBuffer.allocate(0)
+            map["past_key_values.$i.key"] = OnnxTensor.createTensor(env, buf, shape)
+            map["past_key_values.$i.value"] = OnnxTensor.createTensor(env, buf, shape)
+        }
         return map
     }
 
     private fun extractLogits(tensor: OnnxTensor): Array<FloatArray>? {
-        val shape = tensor.info.shape; if (shape.size != 3) return null
-        val seqLen = shape[1].toInt(); val vocabSize = shape[2].toInt(); val buffer = tensor.floatBuffer
-        val result = Array(seqLen) { FloatArray(vocabSize) }; for (i in 0 until seqLen) buffer.get(result[i])
+        val shape = tensor.info.shape
+        if (shape.size != 3) return null
+        val seqLen = shape[1].toInt()
+        val vocabSize = shape[2].toInt()
+        val buffer = tensor.floatBuffer
+        val result = Array(seqLen) { FloatArray(vocabSize) }
+        for (i in 0 until seqLen) buffer.get(result[i])
         return result
     }
 
     private fun sampleToken(logits: FloatArray, temperature: Float = 0.8f, topK: Int = 50): Long {
-        val scaled = FloatArray(logits.size) { logits[it] / temperature }; val maxLogit = scaled.maxOrNull()!!; var expSum = 0.0
+        val scaled = FloatArray(logits.size) { logits[it] / temperature }
+        val maxLogit = scaled.maxOrNull()!!
+        var expSum = 0.0
         for (v in scaled) expSum += exp((v - maxLogit).toDouble())
         val probs = scaled.map { (exp((it - maxLogit).toDouble()) / expSum).toFloat() }
         val indexed = probs.withIndex().sortedByDescending { (_, v) -> v }.take(topK)
-        val filteredValues = indexed.map { (_, v) -> v }; val sum = filteredValues.sum(); val normalized = filteredValues.map { it / sum }
-        val indices = indexed.map { (i, _) -> i }; val r = Random.nextFloat(); var cumulative = 0f
-        for (i in normalized.indices) { cumulative += normalized[i]; if (r <= cumulative) return indices[i].toLong() }
+        val filteredValues = indexed.map { (_, v) -> v }
+        val sum = filteredValues.sum()
+        val normalized = filteredValues.map { it / sum }
+        val indices = indexed.map { (i, _) -> i }
+        val r = Random.nextFloat()
+        var cumulative = 0f
+        for (i in normalized.indices) {
+            cumulative += normalized[i]
+            if (r <= cumulative) return indices[i].toLong()
+        }
         return indices.last().toLong()
     }
 
     private fun createAttentionMaskTensor(seqLen: Int): OnnxTensor {
         val shape = attentionMaskShape?.clone() ?: longArrayOf(1L, seqLen.toLong())
-        for (i in shape.indices) { if (shape[i] <= 0L) shape[i] = seqLen.toLong() }
+        for (i in shape.indices) {
+            if (shape[i] <= 0L) shape[i] = seqLen.toLong()
+        }
         if (shape.isNotEmpty()) shape[0] = 1L
         val elementCount = shape.fold(1L) { acc, l -> acc * l }.toInt()
         val buf = LongBuffer.allocate(elementCount)
@@ -159,7 +177,9 @@ class InferenceEngine(private val context: Context) {
 
             val outputNames: List<String> = session!!.outputNames.toList()
             var logitsIndex = -1
-            for (i in outputNames.indices) { if (outputNames[i].contains("logits", ignoreCase = true)) { logitsIndex = i; break } }
+            for (i in outputNames.indices) {
+                if (outputNames[i].contains("logits", ignoreCase = true)) { logitsIndex = i; break }
+            }
             if (logitsIndex == -1 && outputNames.isNotEmpty()) logitsIndex = 0
 
             var inputIds = allIds.toMutableList()
