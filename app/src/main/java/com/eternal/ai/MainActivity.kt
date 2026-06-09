@@ -87,9 +87,7 @@ fun VoiceScreen() {
     var hasPermission by remember { mutableStateOf(false) }
     val launcher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
-    ) { isGranted ->
-        hasPermission = isGranted
-    }
+    ) { isGranted -> hasPermission = isGranted }
 
     Box(modifier = Modifier.fillMaxSize().background(NeoChineseColors.InkBlack), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -98,11 +96,9 @@ fun VoiceScreen() {
             if (!hasPermission) {
                 Text("需录音权限以聆听神谕", color = NeoChineseColors.RicePaper, fontSize = 14.sp)
                 Spacer(modifier = Modifier.height(8.dp))
-                Button(onClick = { launcher.launch(Manifest.permission.RECORD_AUDIO) }) {
-                    Text("授予权限")
-                }
+                Button(onClick = { launcher.launch(Manifest.permission.RECORD_AUDIO) }) { Text("授予权限") }
             } else {
-                Text("神谕聆听中...", color = NeoChineseColors.JadeGreen, fontSize = 16.sp)
+                Text("神谕聆听中... 🎙️", color = NeoChineseColors.JadeGreen, fontSize = 16.sp)
                 Spacer(modifier = Modifier.height(8.dp))
                 Text("（功能即将开放）", color = NeoChineseColors.Gray, fontSize = 12.sp)
             }
@@ -115,9 +111,7 @@ fun VideoScreen() {
     var hasPermission by remember { mutableStateOf(false) }
     val launcher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
-    ) { isGranted ->
-        hasPermission = isGranted
-    }
+    ) { isGranted -> hasPermission = isGranted }
 
     Box(modifier = Modifier.fillMaxSize().background(NeoChineseColors.InkBlack), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -126,11 +120,9 @@ fun VideoScreen() {
             if (!hasPermission) {
                 Text("需摄像头权限以洞察万物", color = NeoChineseColors.RicePaper, fontSize = 14.sp)
                 Spacer(modifier = Modifier.height(8.dp))
-                Button(onClick = { launcher.launch(Manifest.permission.CAMERA) }) {
-                    Text("授予权限")
-                }
+                Button(onClick = { launcher.launch(Manifest.permission.CAMERA) }) { Text("授予权限") }
             } else {
-                Text("洞察万物中...", color = NeoChineseColors.JadeGreen, fontSize = 16.sp)
+                Text("洞察万物中... 📷", color = NeoChineseColors.JadeGreen, fontSize = 16.sp)
                 Spacer(modifier = Modifier.height(8.dp))
                 Text("（功能即将开放）", color = NeoChineseColors.Gray, fontSize = 12.sp)
             }
@@ -160,9 +152,7 @@ fun FeatureScreen(title: String, description: String, icon: String) {
             Text(description, color = NeoChineseColors.RicePaper, fontSize = 16.sp)
             Spacer(modifier = Modifier.height(24.dp))
             Text("神念所至，万物皆从", color = NeoChineseColors.Gray, fontSize = 13.sp)
-            Button(onClick = { /* 未来实现具体功能 */ }) {
-                Text("启动 $title")
-            }
+            Button(onClick = { /* 未来实现具体功能 */ }) { Text("启动 $title") }
         }
     }
 }
@@ -170,13 +160,5 @@ fun FeatureScreen(title: String, description: String, icon: String) {
 @Composable
 fun NavChip(label: String, active: Boolean, onClick: () -> Unit) {
     @OptIn(ExperimentalMaterial3Api::class)
-    FilterChip(
-        selected = active,
-        onClick = onClick,
-        label = { Text(label, color = if (active) NeoChineseColors.Gold else NeoChineseColors.Gray) },
-        colors = FilterChipDefaults.filterChipColors(
-            containerColor = NeoChineseColors.DarkWood,
-            selectedContainerColor = NeoChineseColors.DarkWood
-        )
-    )
+    FilterChip(selected = active, onClick = onClick, label = { Text(label, color = if (active) NeoChineseColors.Gold else NeoChineseColors.Gray) }, colors = FilterChipDefaults.filterChipColors(containerColor = NeoChineseColors.DarkWood, selectedContainerColor = NeoChineseColors.DarkWood))
 }

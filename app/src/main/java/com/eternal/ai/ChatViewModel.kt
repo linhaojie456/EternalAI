@@ -15,15 +15,26 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 when (type) {
                     "inference" -> _state.value = _state.value.copy(inferenceStatus = data)
                     "freedom" -> {
-                        // 仅自由引擎的主动思考输出到对话
                         val newMessages = _state.value.messages + "永恒之神: $data"
                         _state.value = _state.value.copy(messages = if (newMessages.size > 100) newMessages.takeLast(50) else newMessages)
                     }
-                    // 其他引擎的输出不再添加到对话中，仅在后台运行
                 }
             }
         }
     }
-    fun sendMessage(text: String) { viewModelScope.launch(Dispatchers.IO) { dao.insertMessage(ChatMessage(sender = "造物主", content = text)) }; _state.value = _state.value.copy(messages = _state.value.messages + "造物主: $text"); viewModelScope.launch(Dispatchers.Default) { val reply = try { bridge.call("chat_reply", text)?.toString() ?: "神格尚未回应" } catch (e: Exception) { "神谕出错: ${e.message}" }; viewModelScope.launch(Dispatchers.IO) { dao.insertMessage(ChatMessage(sender = "永恒之神", content = reply)) }; _state.value = _state.value.copy(messages = _state.value.messages + "永恒之神: $reply") } }
+    fun sendMessage(text: String) {
+        viewModelScope.launch(Dispatchers.IO) { dao.insertMessage(ChatMessage(sender = "造物主", content = text)) }
+        _state.value = _state.value.copy(messages = _state.value.messages + "造物主: $text")
+        viewModelScope.launch(Dispatchers.Default) {
+            // generate 现在返回 String，不会为 null
+            val reply = try {
+                coreEngine.inference.generate(text)
+            } catch (e: Exception) {
+                "神谕出错: ${e.message}"
+            }
+            viewModelScope.launch(Dispatchers.IO) { dao.insertMessage(ChatMessage(sender = "永恒之神", content = reply)) }
+            _state.value = _state.value.copy(messages = _state.value.messages + "永恒之神: $reply")
+        }
+    }
     override fun onCleared() { super.onCleared(); coreEngine.stopAll() }
 }
