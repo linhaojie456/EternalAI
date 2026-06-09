@@ -25,39 +25,7 @@ jobs:
       - uses: actions/setup-python@v5
         with: {python-version: '3.10'}
 
-      # ---------- 可靠修复：添加依赖 + 插入 import ----------
-      - name: Fix dependencies and imports
-        run: |
-          # 1. 添加 lifecycle-runtime-compose 依赖（若不存在）
-          if ! grep -q 'lifecycle-runtime-compose' app/build.gradle.kts; then
-            # 在第一个 "implementation(" 行之后插入
-            sed -i '0,/implementation(/ s/implementation(/implementation("androidx.lifecycle:lifecycle-runtime-compose:2.6.1")\n    implementation(/' app/build.gradle.kts
-          fi
-
-          # 2. 确保 Compose 编译选项开启（若未开启）
-          if ! grep -q 'compose = true' app/build.gradle.kts; then
-            # 在 android { 块内任意位置插入 buildFeatures
-            sed -i '/^android {/a\    buildFeatures {\n        compose = true\n    }\n    composeOptions {\n        kotlinCompilerExtensionVersion = "1.5.1"\n    }' app/build.gradle.kts
-          fi
-
-          # 3. 在 VideoScreen.kt 的 package 行之后插入缺失的 import
-          FILE="app/src/main/java/com/eternal/ai/VideoScreen.kt"
-          if ! grep -q 'androidx.lifecycle.compose.LocalLifecycleOwner' "$FILE"; then
-            sed -i '/^package /a\import androidx.lifecycle.compose.LocalLifecycleOwner' "$FILE"
-          fi
-          if ! grep -q 'androidx.compose.runtime.Composable' "$FILE"; then
-            sed -i '/^package /a\import androidx.compose.runtime.Composable' "$FILE"
-          fi
-
-          # 调试输出：显示修改后的文件前 25 行和依赖片段
-          echo "===== VideoScreen.kt 前 25 行 ====="
-          head -n 25 "$FILE"
-          echo "===== build.gradle.kts 中的 implementation 行 ====="
-          grep -n 'implementation' app/build.gradle.kts
-          echo "===== compose 设置 ====="
-          grep -A3 'buildFeatures' app/build.gradle.kts || echo "未找到 buildFeatures"
-
-      # ---------- 模型下载 ----------
+      # 模型下载
       - name: Create model directory
         run: mkdir -p app/src/main/assets/model
 
@@ -91,12 +59,12 @@ jobs:
           else: sys.exit(1)
           PYEOF
 
-      # ---------- 构建 APK ----------
+      # 构建 APK
       - name: Build debug APK
         run: gradle assembleDebug -Dorg.gradle.jvmargs="-Xmx6g"
         env: {GRADLE_OPTS: "-Xmx6g"}
 
-      # ---------- 离线推理验证 ----------
+      # 离线推理验证
       - name: Install validation dependencies
         run: pip install onnxruntime tokenizers
 
@@ -176,7 +144,7 @@ jobs:
           print(f"离线推理验证通过: {success} 条对话")
           PYEOF
 
-      # ---------- 模拟器端到端验证 ----------
+      # 模拟器验证
       - name: Setup Android Emulator (arm64)
         uses: reactivecircus/android-emulator-runner@v2
         with:
@@ -212,7 +180,7 @@ jobs:
                 echo "$log"
             fi
 
-      # ---------- 上传最终 APK ----------
+      # 上传 APK
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with: {name: "永恒之神-APK", path: "app/build/outputs/apk/debug/app-debug.apk"}
