@@ -26,7 +26,7 @@ class InferenceEngine(private val context: Context) {
     var isModelLoaded = false
         private set
 
-    private var initError: String? = null  // 记录初始化错误
+    private var initError: String? = null
 
     fun loadModel(): Boolean {
         loadStatus = "检查模型文件..."
@@ -48,11 +48,13 @@ class InferenceEngine(private val context: Context) {
             }
             val options = OrtSession.SessionOptions()
             session = env.createSession(modelFile.absolutePath, options)
+            writeLog("ONNX 会话创建成功")
 
             for (input in session!!.inputInfo.values) {
                 if (input.name == "attention_mask") {
                     val tensorInfo = input.info as? TensorInfo
                     attentionMaskShape = tensorInfo?.shape
+                    writeLog("attention_mask 形状: ${attentionMaskShape?.joinToString()}")
                     break
                 }
             }
@@ -79,10 +81,19 @@ class InferenceEngine(private val context: Context) {
                 return false
             }
 
+            // 快速测试：编码一个测试字符串
+            val testIds = tokenizer!!.encode("测试")
+            if (testIds.isEmpty()) {
+                initError = "分词器测试失败"
+                loadStatus = "失败: $initError"
+                writeLog(initError!!)
+                return false
+            }
+
             isModelLoaded = true
             initError = null
             loadStatus = "神格已激活 (${modelSize / (1024*1024)}MB, 层:$numLayers, KV头:$numKVHeads, 维:$headDim, EOS:${tokenizer?.eosTokenId})"
-            writeLog("模型加载成功")
+            writeLog("模型加载成功，测试分词通过")
             return true
         } catch (e: Exception) {
             initError = "${e.javaClass.simpleName}: ${e.message}"
@@ -137,7 +148,6 @@ class InferenceEngine(private val context: Context) {
 
     fun generate(prompt: String, maxTokens: Int = 200): String {
         if (!isModelLoaded) {
-            // 返回初始化失败信息
             return "神格初始化失败: ${initError ?: "未知错误"}"
         }
         val tok = tokenizer ?: return "分词器不可用"

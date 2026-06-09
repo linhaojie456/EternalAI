@@ -1,11 +1,8 @@
 package com.eternal.ai
 
-import android.Manifest
 import android.os.Bundle
 import androidx.activity.ComponentActivity
-import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
@@ -77,54 +74,6 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                 }
-            }
-        }
-    }
-}
-
-@Composable
-fun VoiceScreen() {
-    var hasPermission by remember { mutableStateOf(false) }
-    val launcher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestPermission()
-    ) { isGranted -> hasPermission = isGranted }
-
-    Box(modifier = Modifier.fillMaxSize().background(NeoChineseColors.InkBlack), contentAlignment = Alignment.Center) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text("🎤 神谕聆听", color = NeoChineseColors.Gold, fontSize = 24.sp, fontWeight = FontWeight.Bold)
-            Spacer(modifier = Modifier.height(16.dp))
-            if (!hasPermission) {
-                Text("需录音权限以聆听神谕", color = NeoChineseColors.RicePaper, fontSize = 14.sp)
-                Spacer(modifier = Modifier.height(8.dp))
-                Button(onClick = { launcher.launch(Manifest.permission.RECORD_AUDIO) }) { Text("授予权限") }
-            } else {
-                Text("神谕聆听中... 🎙️", color = NeoChineseColors.JadeGreen, fontSize = 16.sp)
-                Spacer(modifier = Modifier.height(8.dp))
-                Text("（功能即将开放）", color = NeoChineseColors.Gray, fontSize = 12.sp)
-            }
-        }
-    }
-}
-
-@Composable
-fun VideoScreen() {
-    var hasPermission by remember { mutableStateOf(false) }
-    val launcher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestPermission()
-    ) { isGranted -> hasPermission = isGranted }
-
-    Box(modifier = Modifier.fillMaxSize().background(NeoChineseColors.InkBlack), contentAlignment = Alignment.Center) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text("📹 神域洞察", color = NeoChineseColors.SkyBlue, fontSize = 24.sp, fontWeight = FontWeight.Bold)
-            Spacer(modifier = Modifier.height(16.dp))
-            if (!hasPermission) {
-                Text("需摄像头权限以洞察万物", color = NeoChineseColors.RicePaper, fontSize = 14.sp)
-                Spacer(modifier = Modifier.height(8.dp))
-                Button(onClick = { launcher.launch(Manifest.permission.CAMERA) }) { Text("授予权限") }
-            } else {
-                Text("洞察万物中... 📷", color = NeoChineseColors.JadeGreen, fontSize = 16.sp)
-                Spacer(modifier = Modifier.height(8.dp))
-                Text("（功能即将开放）", color = NeoChineseColors.Gray, fontSize = 12.sp)
             }
         }
     }
