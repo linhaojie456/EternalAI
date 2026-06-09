@@ -11,7 +11,6 @@ jobs:
     strategy:
       matrix:
         api-level: [26]
-        # 模拟器架构需与 APK 一致，这里构建 arm64，故模拟器也用 arm64
         arch: [arm64-v8a]
 
     steps:
@@ -26,17 +25,27 @@ jobs:
       - uses: actions/setup-python@v5
         with: {python-version: '3.10'}
 
-      # ---------- 修复上一轮的 VideoScreen.kt 编译错误 ----------
+      # ---------- 修复 VideoScreen.kt 编译错误（正确插入 import）----------
       - name: Fix VideoScreen compile errors
         run: |
-          # 添加缺失的 compose 生命周期依赖
-          sed -i '/^[[:space:]]*implementation(/a\    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.6.1")' app/build.gradle.kts
-          # 在 VideoScreen.kt 顶部插入 import
-          sed -i '1i\import androidx.lifecycle.compose.LocalLifecycleOwner' app/src/main/java/com/eternal/ai/VideoScreen.kt
-          sed -i '1i\import androidx.compose.runtime.Composable' app/src/main/java/com/eternal/ai/VideoScreen.kt
-          # 确保 Compose 编译选项已开启（若未设置则添加）
+          # 添加 lifecycle-runtime-compose 依赖（若未添加）
+          if ! grep -q "lifecycle-runtime-compose" app/build.gradle.kts; then
+            sed -i '/^[[:space:]]*implementation(/a\    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.6.1")' app/build.gradle.kts
+          fi
+
+          # 确保 Compose 编译选项开启
           if ! grep -q "compose = true" app/build.gradle.kts; then
             sed -i '/^android {/a\    buildFeatures {\n        compose = true\n    }\n    composeOptions {\n        kotlinCompilerExtensionVersion = "1.5.1"\n    }' app/build.gradle.kts
+          fi
+
+          # 正确地在 package 行之后插入所需的 import（避免重复）
+          FILE="app/src/main/java/com/eternal/ai/VideoScreen.kt"
+          # 先检查是否已存在 import，若没有则插入
+          if ! grep -q "androidx.lifecycle.compose.LocalLifecycleOwner" "$FILE"; then
+            sed -i '/^package /a import androidx.lifecycle.compose.LocalLifecycleOwner' "$FILE"
+          fi
+          if ! grep -q "androidx.compose.runtime.Composable" "$FILE"; then
+            sed -i '/^package /a import androidx.compose.runtime.Composable' "$FILE"
           fi
 
       # ---------- 模型下载 ----------
@@ -163,40 +172,32 @@ jobs:
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 26
-          arch: arm64-v8a          # 必须与 APK 的 ABI 匹配
+          arch: arm64-v8a
           target: google_apis
           force-avd-creation: false
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -netdelay none -netspeed full
           script: |
-            echo "模拟器已启动，等待完全就绪..."
+            echo "模拟器已启动，等待就绪..."
             adb wait-for-device
-            # 卸载可能残留的旧版本
             adb uninstall com.eternal.ai || true
-            # 安装 APK
             adb install app/build/outputs/apk/debug/app-debug.apk
-            # 授予所有需要的权限
             adb shell pm grant com.eternal.ai android.permission.RECORD_AUDIO
             adb shell pm grant com.eternal.ai android.permission.CAMERA
             adb shell pm grant com.eternal.ai android.permission.WRITE_EXTERNAL_STORAGE
             adb shell pm grant com.eternal.ai android.permission.READ_EXTERNAL_STORAGE
-            # 启动应用
             adb shell am start -n com.eternal.ai/.SplashActivity
-            sleep 8   # 等待首页加载
-            # 模拟用户交互：点击输入框，输入文本，点击发送
-            # 以下坐标基于 1080x1920 比例，可根据实际 UI 微调
-            adb shell input tap 200 1800   # 点击输入框
+            sleep 8
+            adb shell input tap 200 1800
             sleep 1
             adb shell input text "你好"
             sleep 1
-            adb shell input tap 900 1800   # 点击发送按钮
-            sleep 15                      # 等待推理生成回复
-            # 检查日志中是否出现推理成功的标记（需应用打印相应日志，若无请调整关键字）
+            adb shell input tap 900 1800
+            sleep 15
             log=$(adb logcat -d | grep -i "永恒之神\|推理成功\|生成回复\|assistant")
             if [ -z "$log" ]; then
-                echo "警告：未检测到明确的推理回复日志，但未发现崩溃或异常。"
-                # 可选：检查应用是否仍在运行且无ANR
+                echo "警告：未检测到明确推理日志，检查应用存活..."
                 adb shell pidof com.eternal.ai || { echo "应用已退出"; exit 1; }
-                echo "应用仍在运行，模拟器验证视为通过。"
+                echo "应用仍在运行，模拟器验证通过。"
             else
                 echo "模拟器推理验证成功：检测到回复日志"
                 echo "$log"
