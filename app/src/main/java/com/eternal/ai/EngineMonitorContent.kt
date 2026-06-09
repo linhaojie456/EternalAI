@@ -48,12 +48,14 @@ fun EngineMonitorContent() {
                 colors = CardDefaults.cardColors(containerColor = NeoChineseColors.DarkWood),
                 shape = RoundedCornerShape(12.dp)
             ) {
-                Column(Modifier.padding(12.dp)) {
-                    Text("引擎: ${status.name}", color = NeoChineseColors.Gold, fontWeight = FontWeight.Bold)
-                    Text("状态: ${status.state}", color = NeoChineseColors.RicePaper)
-                    Text("目标: ${status.goal}", color = NeoChineseColors.Gray)
-                    if (status.detail.isNotEmpty()) Text("详情: ${status.detail}", color = NeoChineseColors.JadeGreen)
-                    if (status.error.isNotEmpty()) Text("错误: ${status.error}", color = NeoChineseColors.Cinnabar)
+                SelectionContainer {
+                    Column(Modifier.padding(12.dp)) {
+                        Text("引擎: ${status.name}", color = NeoChineseColors.Gold, fontWeight = FontWeight.Bold)
+                        Text("状态: ${status.state}", color = NeoChineseColors.RicePaper)
+                        Text("目标: ${status.goal}", color = NeoChineseColors.Gray)
+                        if (status.detail.isNotEmpty()) Text("详情: ${status.detail}", color = NeoChineseColors.JadeGreen)
+                        if (status.error.isNotEmpty()) Text("错误: ${status.error}", color = NeoChineseColors.Cinnabar)
+                    }
                 }
             }
         }

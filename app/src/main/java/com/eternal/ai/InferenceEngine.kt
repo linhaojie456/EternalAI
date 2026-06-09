@@ -3,6 +3,7 @@ package com.eternal.ai
 import ai.onnxruntime.*
 import android.content.Context
 import java.io.File
+import java.nio.LongBuffer
 import java.nio.FloatBuffer
 import kotlin.math.exp
 import kotlin.random.Random
@@ -35,11 +36,10 @@ class InferenceEngine(private val context: Context) {
             val options = OrtSession.SessionOptions()
             session = env.createSession(modelFile.absolutePath, options)
 
-            // 获取 attention_mask 形状
             for (input in session!!.inputInfo.values) {
                 if (input.name == "attention_mask") {
                     val tensorInfo = input.info as? TensorInfo
-                    attentionMaskShape = tensorInfo?.shape  // 直接赋值，无需 toLongArray()
+                    attentionMaskShape = tensorInfo?.shape
                     break
                 }
             }
@@ -96,8 +96,8 @@ class InferenceEngine(private val context: Context) {
         for (i in shape.indices) { if (shape[i] <= 0L) shape[i] = seqLen.toLong() }
         if (shape.isNotEmpty()) shape[0] = 1L
         val elementCount = shape.fold(1L) { acc, l -> acc * l }.toInt()
-        val buf = FloatBuffer.allocate(elementCount)
-        for (i in 0 until elementCount) buf.put(1.0f)
+        val buf = LongBuffer.allocate(elementCount)
+        for (i in 0 until elementCount) buf.put(1L)
         buf.rewind()
         return OnnxTensor.createTensor(env, buf, shape)
     }
