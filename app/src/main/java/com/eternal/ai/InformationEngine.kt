@@ -13,7 +13,6 @@ class InformationEngine {
 
     fun start(coordinator: EngineCoordinator, onInfo: (String) -> Unit) {
         onStatus = onInfo
-        // 立即检查一次连接
         checkConnection()
         scope.launch {
             while (isActive) {
@@ -50,29 +49,19 @@ class InformationEngine {
     }
 
     private fun checkConnection() {
-        if (!enabled) {
-            onStatus?.invoke("离线")
-            return
-        }
+        if (!enabled) { onStatus?.invoke("离线"); return }
         scope.launch {
             try {
                 val url = URL("https://api.ipify.org")
                 val conn = url.openConnection() as HttpURLConnection
-                conn.connectTimeout = 5000
-                conn.readTimeout = 5000
+                conn.connectTimeout = 5000; conn.readTimeout = 5000
                 if (conn.responseCode == 200) {
                     val ip = conn.inputStream.bufferedReader().readText()
                     connected = true
                     onStatus?.invoke("已连接 IP: $ip")
-                } else {
-                    connected = false
-                    onStatus?.invoke("离线")
-                }
+                } else { connected = false; onStatus?.invoke("离线") }
                 conn.disconnect()
-            } catch (e: Exception) {
-                connected = false
-                onStatus?.invoke("离线")
-            }
+            } catch (e: Exception) { connected = false; onStatus?.invoke("离线") }
         }
     }
 

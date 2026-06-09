@@ -68,31 +68,24 @@ jobs:
           logits_index = output_names.index(logits_name)
           eos_token_id = json.load(open("tokenizer_config.json")).get("eos_token_id", 151643)
 
-          # 动态获取 attention_mask 形状并转换为安全列表
+          # 获取 past_key_values 和 attention_mask 形状
+          past_info = {}
           attention_mask_shape = None
           for inp in session.get_inputs():
               if inp.name == "attention_mask":
-                  raw_shape = inp.shape
-                  # 过滤非整数维度，用1替代（batch=1，其余用seq_len）
-                  attention_mask_shape = [1 if not isinstance(d, int) else d for d in raw_shape]
-                  break
+                  attention_mask_shape = [1 if not isinstance(d, int) else d for d in inp.shape]
+              elif inp.name.startswith("past_key_values."):
+                  shape = inp.shape
+                  past_info[inp.name] = (shape[1], shape[3])
 
           def create_attention_mask(seq_len):
               if attention_mask_shape is None:
-                  return np.ones((1, seq_len), dtype=np.int64)
+                  return np.ones((1, 1, 1, seq_len), dtype=np.int64)
               shape = attention_mask_shape.copy()
-              # 替换动态维度（0或负数）为seq_len
               for i in range(len(shape)):
                   if shape[i] <= 0:
                       shape[i] = seq_len
               return np.ones(shape, dtype=np.int64)
-
-          # 动态获取 past 形状
-          past_info = {}
-          for inp in session.get_inputs():
-              if inp.name.startswith("past_key_values."):
-                  shape = inp.shape
-                  past_info[inp.name] = (shape[1], shape[3])
 
           def gen(prompt):
               formatted = f"<|im_start|>system\n汝是永恒之神。<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n"
