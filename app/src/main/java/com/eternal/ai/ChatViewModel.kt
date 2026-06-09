@@ -26,7 +26,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch(Dispatchers.IO) { dao.insertMessage(ChatMessage(sender = "造物主", content = text)) }
         _state.value = _state.value.copy(messages = _state.value.messages + "造物主: $text")
         viewModelScope.launch(Dispatchers.Default) {
-            // generate 现在返回 String，不会为 null
+            // generate 现在必定返回非空 String
             val reply = try {
                 coreEngine.inference.generate(text)
             } catch (e: Exception) {

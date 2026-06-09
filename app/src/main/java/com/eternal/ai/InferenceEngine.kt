@@ -26,33 +26,33 @@ class InferenceEngine(private val context: Context) {
     var isModelLoaded = false
         private set
 
+    private var initError: String? = null  // 记录初始化错误
+
     fun loadModel(): Boolean {
         loadStatus = "检查模型文件..."
         try {
             val modelDir = File(context.filesDir, "model")
             val modelFile = File(modelDir, "model.onnx")
             if (!modelFile.exists()) {
-                lastError = "模型文件不存在: ${modelFile.absolutePath}"
-                loadStatus = "失败: $lastError"
-                writeLog("模型文件缺失")
+                initError = "模型文件不存在: ${modelFile.absolutePath}"
+                loadStatus = "失败: $initError"
+                writeLog(initError!!)
                 return false
             }
             modelSize = modelFile.length()
             if (modelSize < 1_000_000) {
-                lastError = "模型文件异常小: $modelSize 字节"
-                loadStatus = "失败: $lastError"
-                writeLog("模型文件过小")
+                initError = "模型文件异常小: $modelSize 字节"
+                loadStatus = "失败: $initError"
+                writeLog(initError!!)
                 return false
             }
             val options = OrtSession.SessionOptions()
             session = env.createSession(modelFile.absolutePath, options)
-            writeLog("ONNX 会话创建成功")
 
             for (input in session!!.inputInfo.values) {
                 if (input.name == "attention_mask") {
                     val tensorInfo = input.info as? TensorInfo
                     attentionMaskShape = tensorInfo?.shape
-                    writeLog("attention_mask 形状: ${attentionMaskShape?.joinToString()}")
                     break
                 }
             }
@@ -72,20 +72,22 @@ class InferenceEngine(private val context: Context) {
 
             tokenizer = TokenizerHelper(modelDir)
             if (tokenizer?.loadError != null) {
-                lastError = tokenizer?.loadError
-                loadStatus = "失败: $lastError"
-                writeLog("分词器加载失败: $lastError")
+                initError = "分词器加载失败: ${tokenizer?.loadError}"
+                loadStatus = "失败: $initError"
+                writeLog(initError!!)
+                isModelLoaded = false
                 return false
             }
 
-            isModelLoaded = true; lastError = null
+            isModelLoaded = true
+            initError = null
             loadStatus = "神格已激活 (${modelSize / (1024*1024)}MB, 层:$numLayers, KV头:$numKVHeads, 维:$headDim, EOS:${tokenizer?.eosTokenId})"
-            writeLog("模型加载完成")
+            writeLog("模型加载成功")
             return true
         } catch (e: Exception) {
-            lastError = "${e.javaClass.simpleName}: ${e.message}"
-            loadStatus = "异常: $lastError"
-            writeLog("加载异常: $lastError")
+            initError = "${e.javaClass.simpleName}: ${e.message}"
+            loadStatus = "异常: $initError"
+            writeLog("加载异常: $initError")
             return false
         }
     }
@@ -135,10 +137,10 @@ class InferenceEngine(private val context: Context) {
 
     fun generate(prompt: String, maxTokens: Int = 200): String {
         if (!isModelLoaded) {
-            writeLog("推理失败：模型未加载")
-            return "吾之神格暂未苏醒。请检查模型文件是否完整。"
+            // 返回初始化失败信息
+            return "神格初始化失败: ${initError ?: "未知错误"}"
         }
-        val tok = tokenizer ?: return "分词器未就绪"
+        val tok = tokenizer ?: return "分词器不可用"
         val eosId = tok.eosTokenId
         try {
             val formattedPrompt = "<|im_start|>system\n汝是永恒之神。<|im_end|>\n<|im_start|>user\n$prompt<|im_end|>\n<|im_start|>assistant\n"
@@ -167,7 +169,7 @@ class InferenceEngine(private val context: Context) {
                 val logitsValue: OnnxValue = result.get(logitsIndex)
                 val logitsTensor = logitsValue as? OnnxTensor
                 if (logitsTensor == null) {
-                    writeLog("logits 张量为空，索引: $logitsIndex")
+                    writeLog("logits 张量为空")
                     return "神谕暂不可用。"
                 }
                 val logits = extractLogits(logitsTensor)
@@ -202,23 +204,20 @@ class InferenceEngine(private val context: Context) {
                 maskTensor = createAttentionMaskTensor(1)
             }
 
-            if (generated.isEmpty()) {
-                writeLog("生成 token 数为 0")
-                return "吾思虑片刻，未得神谕。"
-            }
+            if (generated.isEmpty()) return "吾思虑片刻，未得神谕。"
             val fullIds = (allIds + generated).toLongArray()
             val rawOutput = tok.decode(fullIds)
             val marker = "<|im_start|>assistant\n"
             val idx = rawOutput.lastIndexOf(marker)
             val reply = if (idx >= 0) rawOutput.substring(idx + marker.length).trim() else rawOutput.removePrefix(formattedPrompt).trim()
-            if (reply.isEmpty()) {
+            if (reply.isNotEmpty()) {
+                writeLog("推理成功，回复长度: ${reply.length}")
+                return reply
+            } else {
                 writeLog("解码后回复为空")
                 return "吾思虑片刻，未得神谕。"
             }
-            writeLog("推理成功，回复长度: ${reply.length}")
-            return reply
         } catch (e: Exception) {
-            lastError = "神谕异常: ${e.message}"
             writeLog("推理异常: ${e.message}")
             return "神格波动，神谕暂不可达。"
         }
@@ -226,7 +225,7 @@ class InferenceEngine(private val context: Context) {
 
     fun start(coordinator: EngineCoordinator, onStatus: (String) -> Unit) {
         loadModel()
-        onStatus(if (isModelLoaded) "[推理] 神格已激活" else "[推理] 神格激活失败: ${lastError ?: "未知"}")
+        onStatus(if (isModelLoaded) "[推理] 神格已激活" else "[推理] 神格激活失败: ${initError ?: "未知"}")
     }
     fun stop() { session?.close() }
 }
