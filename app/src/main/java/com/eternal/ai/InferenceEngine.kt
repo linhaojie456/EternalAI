@@ -20,7 +20,8 @@ class InferenceEngine(private val context: Context) {
     private var numKVHeads: Int = 2
     private var headDim: Int = 128
     private var numLayers: Int = 28
-    private var attentionMaskShape: LongArray? = null
+    // 从模型直接获取的 attention_mask 形状（可能包含动态维度）
+    private var attentionMaskShapeTemplate: LongArray? = null
 
     var isModelLoaded = false
         private set
@@ -36,14 +37,16 @@ class InferenceEngine(private val context: Context) {
             val options = OrtSession.SessionOptions()
             session = env.createSession(modelFile.absolutePath, options)
 
+            // 获取 attention_mask 的准确形状（可能含 -1）
             for (input in session!!.inputInfo.values) {
                 if (input.name == "attention_mask") {
                     val tensorInfo = input.info as? TensorInfo
-                    attentionMaskShape = tensorInfo?.shape
+                    attentionMaskShapeTemplate = tensorInfo?.shape
                     break
                 }
             }
 
+            // 获取 KV 缓存参数
             val inputInfo = session!!.inputInfo
             var maxLayerIndex = -1
             for ((name, nodeInfo) in inputInfo) {
@@ -92,29 +95,23 @@ class InferenceEngine(private val context: Context) {
     }
 
     private fun createAttentionMaskTensor(seqLen: Int): OnnxTensor? {
-        val shapesToTry = mutableListOf<LongArray>()
-        if (attentionMaskShape != null) {
-            val inferredShape = attentionMaskShape!!.clone()
-            for (i in inferredShape.indices) { if (inferredShape[i] <= 0L) inferredShape[i] = seqLen.toLong() }
-            shapesToTry.add(inferredShape)
+        val template = attentionMaskShapeTemplate ?: longArrayOf(1L, seqLen.toLong())
+        // 复制模板，并将动态维度（≤0）替换为 seqLen
+        val shape = template.clone()
+        for (i in shape.indices) {
+            if (shape[i] <= 0L) shape[i] = seqLen.toLong()
         }
-        // 2D
-        shapesToTry.add(longArrayOf(1L, seqLen.toLong()))
-        // 4D 因果掩码（最可能成功）
-        shapesToTry.add(longArrayOf(1L, 1L, seqLen.toLong(), seqLen.toLong()))
-        // 4D 压缩
-        shapesToTry.add(longArrayOf(1L, 1L, 1L, seqLen.toLong()))
-        for (shape in shapesToTry) {
-            try {
-                val elementCount = shape.fold(1L) { acc, l -> acc * l }.toInt()
-                val buf = LongBuffer.allocate(elementCount)
-                // 对于 4D 因果掩码，我们需要下三角全1，但简化用全1尝试
-                for (i in 0 until elementCount) buf.put(1L)
-                buf.rewind()
-                return OnnxTensor.createTensor(env, buf, shape)
-            } catch (_: Exception) {}
+        // 确保 batch 维度为 1
+        if (shape.isNotEmpty()) shape[0] = 1L
+        return try {
+            val elementCount = shape.fold(1L) { acc, l -> acc * l }.toInt()
+            val buf = LongBuffer.allocate(elementCount)
+            for (i in 0 until elementCount) buf.put(1L)
+            buf.rewind()
+            OnnxTensor.createTensor(env, buf, shape)
+        } catch (e: Exception) {
+            null
         }
-        return null
     }
 
     fun generate(prompt: String, maxTokens: Int = 200): String? {
@@ -152,7 +149,6 @@ class InferenceEngine(private val context: Context) {
                 if (generated.isNotEmpty() && nextToken == eosId) break
                 generated.add(nextToken); inputIds.add(nextToken); positionIds.add(positionIds.size.toLong())
 
-                // 更新 KV 缓存和掩码
                 val newPast = mutableMapOf<String, OnnxTensor>()
                 for (idx in outputNames.indices) {
                     val name = outputNames[idx]

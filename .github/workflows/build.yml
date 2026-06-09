@@ -24,44 +24,26 @@ jobs:
           python3 << 'PYEOF'
           from huggingface_hub import hf_hub_download
           import os, sys, time
-
           mirrors = ["https://hf-mirror.com", "https://huggingface.co"]
           repo_id = "onnx-community/DeepSeek-R1-Distill-Qwen-1.5B-ONNX"
-          files = {
-              "onnx/model_quantized.onnx": 800_000_000,
-              "tokenizer.json": 1_000_000,
-              "tokenizer_config.json": 100
-          }
-
+          files = {"onnx/model_quantized.onnx": 800_000_000, "tokenizer.json": 1_000_000, "tokenizer_config.json": 100}
           def dl_with_retry(fname, min_size, max_retries=5):
               for mirror in mirrors:
                   os.environ["HF_ENDPOINT"] = mirror
                   for attempt in range(max_retries):
                       try:
-                          print(f"[{mirror}] Downloading {fname} (attempt {attempt+1})...")
                           path = hf_hub_download(repo_id, fname, local_dir=".")
                           size = os.path.getsize(path)
                           if size >= min_size: return path
-                          print(f"  ⚠ size {size} < {min_size}")
-                      except Exception as e:
-                          print(f"  ✗ Error: {e}")
-                      wait = 2 ** attempt
-                      time.sleep(wait)
+                      except Exception as e: pass
+                      time.sleep(2 ** attempt)
               return None
-
           for fname, min_size in files.items():
-              path = dl_with_retry(fname, min_size)
-              if not path:
-                  print(f"Failed to download {fname} after all retries")
-                  sys.exit(1)
-
+              if not dl_with_retry(fname, min_size): sys.exit(1)
           if os.path.exists("onnx/model_quantized.onnx"):
               os.rename("onnx/model_quantized.onnx", "model.onnx")
               os.rmdir("onnx")
-          else:
-              print("model file not found after download")
-              sys.exit(1)
-          print("All model files downloaded successfully.")
+          else: sys.exit(1)
           PYEOF
       - name: Build debug APK
         run: gradle assembleDebug -Dorg.gradle.jvmargs="-Xmx6g"
@@ -73,7 +55,7 @@ jobs:
           ICON="app/src/main/res/drawable/ic_launcher_foreground.xml"
           grep -q "M54,20 L74,68 L34,68 Z" "$ICON" || exit 1
           grep -q "M54,88 L74,40 L34,40 Z" "$ICON" || exit 1
-      - name: Validate model with 10 dialogues (failure aborts build)
+      - name: Diagnose & validate model (failure aborts build)
         working-directory: app/src/main/assets/model
         timeout-minutes: 30
         run: |
@@ -89,24 +71,33 @@ jobs:
           logits_index = output_names.index(logits_name)
           eos_token_id = json.load(open("tokenizer_config.json")).get("eos_token_id", 151643)
 
+          # 打印模型输入信息
+          print("===== 模型输入信息 =====")
+          attention_mask_shape = None
+          for inp in session.get_inputs():
+              print(f"  {inp.name}: shape={inp.shape}")
+              if inp.name == "attention_mask":
+                  attention_mask_shape = list(inp.shape)  # 保留原始可能含字符串
+          # 获取 past_key_values 形状
           past_info = {}
           for inp in session.get_inputs():
               if inp.name.startswith("past_key_values."):
-                  shape = inp.shape
-                  past_info[inp.name] = (shape[1], shape[3])
+                  past_info[inp.name] = (inp.shape[1], inp.shape[3])
 
+          # 定义一个函数，按照模型要求的形状创建 attention_mask
           def create_attention_mask(seq_len):
-              shapes = [
-                  [1, seq_len],                   # 2D
-                  [1, 1, seq_len, seq_len],       # 4D 因果掩码（关键）
-                  [1, 1, 1, seq_len],             # 4D 压缩
-                  [1, 1, seq_len]                 # 3D
-              ]
-              for shape in shapes:
-                  try:
-                      return np.ones(shape, dtype=np.int64)
-                  except: continue
-              return None
+              if attention_mask_shape is None:
+                  return np.ones((1, seq_len), dtype=np.int64)  # fallback
+              shape = []
+              for d in attention_mask_shape:
+                  if isinstance(d, str) or d <= 0:
+                      shape.append(seq_len)
+                  else:
+                      shape.append(d)
+              # 确保 batch 维度为 1
+              if len(shape) > 0:
+                  shape[0] = 1
+              return np.ones(shape, dtype=np.int64)
 
           def gen(prompt):
               formatted = f"<|im_start|>system\n汝是永恒之神。<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n"
@@ -114,7 +105,6 @@ jobs:
               input_ids = np.array(enc.ids, dtype=np.int64).reshape(1, -1)
               seq_len = input_ids.shape[1]
               attention_mask = create_attention_mask(seq_len)
-              if attention_mask is None: return None
               position_ids = np.arange(seq_len, dtype=np.int64).reshape(1, -1)
               past = {}
               for i in range(28):
@@ -163,6 +153,7 @@ jobs:
                   print(f"✗ [{p}] 失败")
           if success < 10:
               print(f"错误: 仅 {success}/10 条对话通过验证，推理无效，构建中止")
+              print(f"模型 attention_mask 要求形状: {attention_mask_shape}")
               sys.exit(1)
           print(f"验证通过: {success}/10 条对话")
           PYEOF
