@@ -25,22 +25,17 @@ jobs:
       - uses: actions/setup-python@v5
         with: {python-version: '3.10'}
 
-      # 修复 VideoScreen.kt 编译错误（带调试输出）
+      # 修复 VideoScreen.kt 编译错误（如果尚未修复）
       - name: Fix VideoScreen import and dependencies
         run: |
-          echo "========== VideoScreen.kt BEFORE fix =========="
-          head -n 20 app/src/main/java/com/eternal/ai/VideoScreen.kt
-
           python3 << 'PYFIX'
           file_path = "app/src/main/java/com/eternal/ai/VideoScreen.kt"
           with open(file_path, "r") as f:
               lines = f.readlines()
-
           package_idx = next((i for i, line in enumerate(lines) if line.strip().startswith("package ")), None)
           if package_idx is None:
               print("ERROR: No package line found")
               exit(1)
-
           imports_to_add = [
               "import androidx.lifecycle.compose.LocalLifecycleOwner\n",
               "import androidx.compose.runtime.Composable\n"
@@ -52,62 +47,105 @@ jobs:
                   lines.insert(package_idx + 1, imp)
                   package_idx += 1
                   inserted = True
-
           if inserted:
               with open(file_path, "w") as f:
                   f.writelines(lines)
-              print("✓ Imports added to VideoScreen.kt")
+              print("✓ Imports added")
           else:
               print("✓ Imports already present")
           PYFIX
 
-          echo "========== VideoScreen.kt AFTER fix =========="
-          head -n 20 app/src/main/java/com/eternal/ai/VideoScreen.kt
-
-          # 添加 lifecycle-runtime-compose 依赖
           if ! grep -q 'lifecycle-runtime-compose' app/build.gradle.kts; then
               sed -i '0,/implementation(/ s/implementation(/implementation("androidx.lifecycle:lifecycle-runtime-compose:2.6.1")\n    implementation(/' app/build.gradle.kts
           fi
-
-          # 启用 compose
           if ! grep -q 'compose = true' app/build.gradle.kts; then
               sed -i '/^android {/a\    buildFeatures {\n        compose = true\n    }\n    composeOptions {\n        kotlinCompilerExtensionVersion = "1.5.1"\n    }' app/build.gradle.kts
           fi
 
-          echo "========== build.gradle.kts (dependencies) =========="
-          grep -n 'implementation\|compose' app/build.gradle.kts
-
       - name: Create model directory
         run: mkdir -p app/src/main/assets/model
 
+      # 恢复模型缓存（如果命中则可以跳过下载）
+      - name: Cache ONNX model
+        id: cache-model
+        uses: actions/cache@v4
+        with:
+          path: app/src/main/assets/model
+          key: deepseek-onnx-${{ hashFiles('.github/workflows/build.yml') }}
+          restore-keys: deepseek-onnx-
+
+      # 下载模型（带超强重试和镜像切换）
       - name: Download DeepSeek ONNX model
+        if: steps.cache-model.outputs.cache-hit != 'true'
         working-directory: app/src/main/assets/model
-        timeout-minutes: 20
+        timeout-minutes: 30
         run: |
           pip install -q huggingface_hub
           python3 << 'PYEOF'
+          import os, sys, time, random
           from huggingface_hub import hf_hub_download
-          import os, sys, time
-          mirrors = ["https://hf-mirror.com", "https://huggingface.co"]
+
+          # 可选的 HF_TOKEN 环境变量用于认证
+          token = os.environ.get("HF_TOKEN", None)
+
+          mirrors = [
+              "https://huggingface.co",
+              "https://hf-mirror.com",
+              "https://huggingface.co",  # 如果只有官方源，多试几次
+          ]
+
           repo_id = "onnx-community/DeepSeek-R1-Distill-Qwen-1.5B-ONNX"
-          files = {"onnx/model_quantized.onnx": 800_000_000, "tokenizer.json": 1_000_000, "tokenizer_config.json": 100}
-          def dl_with_retry(fname, min_size, max_retries=5):
+          files = {
+              "onnx/model_quantized.onnx": 800_000_000,
+              "tokenizer.json": 1_000_000,
+              "tokenizer_config.json": 100
+          }
+
+          def download_file(filename, min_size, max_retries=10):
               for mirror in mirrors:
                   os.environ["HF_ENDPOINT"] = mirror
                   for attempt in range(max_retries):
                       try:
-                          path = hf_hub_download(repo_id, fname, local_dir=".")
+                          # 随机抖动避免被限流
+                          jitter = random.uniform(2, 10)
+                          time.sleep(jitter)
+                          path = hf_hub_download(
+                              repo_id, filename,
+                              local_dir=".",
+                              token=token,
+                              resume_download=True
+                          )
                           size = os.path.getsize(path)
-                          if size >= min_size: return path
-                      except Exception as e: pass
-                      time.sleep(2 ** attempt)
+                          if size >= min_size:
+                              print(f"Downloaded {filename} from {mirror} (size {size})")
+                              return path
+                          else:
+                              print(f"Size mismatch for {filename}: {size} < {min_size}, retrying...")
+                      except Exception as e:
+                          print(f"Error from {mirror} ({filename}): {e}")
+                          # 429 时增加更长的等待
+                          if "429" in str(e):
+                              time.sleep(random.uniform(30, 90))
+                          else:
+                              time.sleep(10 * (attempt + 1))
               return None
+
           for fname, min_size in files.items():
-              if not dl_with_retry(fname, min_size): sys.exit(1)
+              result = download_file(fname, min_size)
+              if result is None:
+                  print(f"Failed to download {fname} after all retries")
+                  sys.exit(1)
+
+          # 重命名模型文件
           if os.path.exists("onnx/model_quantized.onnx"):
               os.rename("onnx/model_quantized.onnx", "model.onnx")
-              os.rmdir("onnx")
-          else: sys.exit(1)
+              if os.path.isdir("onnx") and not os.listdir("onnx"):
+                  os.rmdir("onnx")
+          else:
+              print("model_quantized.onnx not found")
+              sys.exit(1)
+
+          print("All model files downloaded successfully")
           PYEOF
 
       - name: Build debug APK
