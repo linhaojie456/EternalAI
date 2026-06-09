@@ -103,8 +103,11 @@ class InferenceEngine(private val context: Context) {
     }
 
     fun generate(prompt: String, maxTokens: Int = 200): String? {
-        if (!isModelLoaded) return "吾之神格暂未苏醒。"
-        val tok = tokenizer ?: return "分词器未就绪"
+        if (!isModelLoaded) {
+            lastError = "模型未加载"
+            return "吾之神格暂未苏醒。"
+        }
+        val tok = tokenizer ?: run { lastError = "分词器为空"; return "分词器未就绪" }
         val eosId = tok.eosTokenId
         return try {
             val formattedPrompt = "<|im_start|>system\n汝是永恒之神。<|im_end|>\n<|im_start|>user\n$prompt<|im_end|>\n<|im_start|>assistant\n"
@@ -116,7 +119,6 @@ class InferenceEngine(private val context: Context) {
             for (i in outputNames.indices) { if (outputNames[i].contains("logits", ignoreCase = true)) { logitsIndex = i; break } }
             if (logitsIndex == -1 && outputNames.isNotEmpty()) logitsIndex = 0
 
-            // 首次推理：传入完整 prompt
             var inputIds = allIds.toMutableList()
             var positionIds = (0L until inputIds.size.toLong()).toMutableList()
             var maskTensor = createAttentionMaskTensor(inputIds.size)
@@ -132,15 +134,22 @@ class InferenceEngine(private val context: Context) {
 
                 val result = sess.run(inputs)
                 val logitsValue: OnnxValue = result.get(logitsIndex)
-                val logitsTensor = logitsValue as? OnnxTensor ?: return "神谕暂不可用。"
-                val logits = extractLogits(logitsTensor) ?: return "神谕暂不可用。"
+                val logitsTensor = logitsValue as? OnnxTensor
+                if (logitsTensor == null) {
+                    lastError = "logits 张量为空"
+                    return "神谕暂不可用。"
+                }
+                val logits = extractLogits(logitsTensor)
+                if (logits == null) {
+                    lastError = "logits 提取失败"
+                    return "神谕暂不可用。"
+                }
                 val nextTokenLogits = logits[logits.size - 1]
                 val nextToken = sampleToken(nextTokenLogits)
 
                 if (generated.isNotEmpty() && nextToken == eosId) break
                 generated.add(nextToken)
 
-                // 从输出中提取 present 张量作为新的 past_key_values
                 val newPast = mutableMapOf<String, OnnxTensor>()
                 for (idx in outputNames.indices) {
                     val name = outputNames[idx]
@@ -157,19 +166,24 @@ class InferenceEngine(private val context: Context) {
                 }
                 if (newPast.isNotEmpty()) pastKeyValues = newPast
 
-                // 后续推理：只传入最后一个 token
                 inputIds = mutableListOf(nextToken)
                 positionIds = mutableListOf((allIds.size + generated.size - 1).toLong())
                 maskTensor = createAttentionMaskTensor(1)
             }
 
-            if (generated.isEmpty()) return "吾思虑片刻，未得神谕。"
+            if (generated.isEmpty()) {
+                lastError = "生成0个token"
+                return "吾思虑片刻，未得神谕。"
+            }
             val fullIds = (allIds + generated).toLongArray()
             val rawOutput = tok.decode(fullIds)
             val marker = "<|im_start|>assistant\n"
             val idx = rawOutput.lastIndexOf(marker)
             val reply = if (idx >= 0) rawOutput.substring(idx + marker.length).trim() else rawOutput.removePrefix(formattedPrompt).trim()
-            reply.ifEmpty { "吾思虑片刻，未得神谕。" }
+            reply.ifEmpty {
+                lastError = "解码后为空"
+                "吾思虑片刻，未得神谕。"
+            }
         } catch (e: Exception) {
             lastError = "神谕异常: ${e.message}"
             "神格波动，神谕暂不可达。"
