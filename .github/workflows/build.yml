@@ -25,107 +25,37 @@ jobs:
       - uses: actions/setup-python@v5
         with: {python-version: '3.10'}
 
-      # ---------- 用 Python 精确修复 VideoScreen.kt 和依赖 ----------
-      - name: Fix VideoScreen compile errors (robust Python)
+      # ---------- 可靠修复：添加依赖 + 插入 import ----------
+      - name: Fix dependencies and imports
         run: |
-          python3 << 'PYFIX'
-          import os, re
+          # 1. 添加 lifecycle-runtime-compose 依赖（若不存在）
+          if ! grep -q 'lifecycle-runtime-compose' app/build.gradle.kts; then
+            # 在第一个 "implementation(" 行之后插入
+            sed -i '0,/implementation(/ s/implementation(/implementation("androidx.lifecycle:lifecycle-runtime-compose:2.6.1")\n    implementation(/' app/build.gradle.kts
+          fi
 
-          # 1. 添加依赖到 build.gradle.kts (如果不存在)
-          gradle_file = "app/build.gradle.kts"
-          with open(gradle_file, "r") as f:
-              content = f.read()
-          dep = 'implementation("androidx.lifecycle:lifecycle-runtime-compose:2.6.1")'
-          if dep not in content:
-              # 在第一个 implementation 行之后插入（安全位置）
-              lines = content.split('\n')
-              inserted = False
-              new_lines = []
-              for line in lines:
-                  new_lines.append(line)
-                  if not inserted and re.search(r'^\s*implementation\(', line):
-                      new_lines.append("    " + dep)
-                      inserted = True
-              if not inserted:
-                  # 若找不到 implementation，则在 dependencies 块末尾插入
-                  new_lines = []
-                  for line in lines:
-                      new_lines.append(line)
-                      if line.strip().startswith('dependencies {'):
-                          new_lines.append("    " + dep)
-              with open(gradle_file, "w") as f:
-                  f.write('\n'.join(new_lines))
-              print("Dependency added: " + dep)
-          else:
-              print("Dependency already exists.")
+          # 2. 确保 Compose 编译选项开启（若未开启）
+          if ! grep -q 'compose = true' app/build.gradle.kts; then
+            # 在 android { 块内任意位置插入 buildFeatures
+            sed -i '/^android {/a\    buildFeatures {\n        compose = true\n    }\n    composeOptions {\n        kotlinCompilerExtensionVersion = "1.5.1"\n    }' app/build.gradle.kts
+          fi
 
-          # 确保 compose 编译选项开启
-          if 'compose = true' not in content:
-              lines = content.split('\n')
-              new_lines = []
-              in_android = False
-              inserted = False
-              for line in lines:
-                  new_lines.append(line)
-                  if re.search(r'^\s*android\s*{', line):
-                      in_android = True
-                  if in_android and not inserted and re.search(r'^\s*buildFeatures\s*{', line):
-                      new_lines.append("        compose = true")
-                      new_lines.append("    }")
-                      new_lines.append("    composeOptions {")
-                      new_lines.append("        kotlinCompilerExtensionVersion = \"1.5.1\"")
-                      inserted = True
-              if not inserted:
-                  # 在 android 块末尾前插入
-                  idx = len(new_lines)-1
-                  while idx >= 0 and not new_lines[idx].strip().startswith('}'):
-                      idx -= 1
-                  if idx > 0:
-                      new_lines.insert(idx, "    buildFeatures {\n        compose = true\n    }\n    composeOptions {\n        kotlinCompilerExtensionVersion = \"1.5.1\"\n    }")
-              with open(gradle_file, "w") as f:
-                  f.write('\n'.join(new_lines))
-              print("Compose buildFeatures enabled.")
+          # 3. 在 VideoScreen.kt 的 package 行之后插入缺失的 import
+          FILE="app/src/main/java/com/eternal/ai/VideoScreen.kt"
+          if ! grep -q 'androidx.lifecycle.compose.LocalLifecycleOwner' "$FILE"; then
+            sed -i '/^package /a\import androidx.lifecycle.compose.LocalLifecycleOwner' "$FILE"
+          fi
+          if ! grep -q 'androidx.compose.runtime.Composable' "$FILE"; then
+            sed -i '/^package /a\import androidx.compose.runtime.Composable' "$FILE"
+          fi
 
-          # 2. 修复 VideoScreen.kt
-          video_file = "app/src/main/java/com/eternal/ai/VideoScreen.kt"
-          with open(video_file, "r") as f:
-              lines = f.readlines()
-
-          # 需要的 import 列表
-          required_imports = [
-              "import androidx.lifecycle.compose.LocalLifecycleOwner",
-              "import androidx.compose.runtime.Composable"
-          ]
-          # 获取当前所有 import 和 package 行位置
-          package_idx = None
-          for i, line in enumerate(lines):
-              if line.strip().startswith("package "):
-                  package_idx = i
-                  break
-          if package_idx is None:
-              package_idx = -1  # 没有 package 行则插入到文件开头
-
-          # 插入缺失的 import，置于 package 之后、其他 import 之前
-          existing_imports = set(l.strip() for l in lines)
-          to_insert = [imp for imp in required_imports if imp not in existing_imports]
-          if to_insert:
-              insert_pos = package_idx + 1
-              for imp in reversed(to_insert):
-                  lines.insert(insert_pos, imp + "\n")
-              with open(video_file, "w") as f:
-                  f.writelines(lines)
-              print("Added imports: " + str(to_insert))
-          else:
-              print("All required imports already present.")
-
-          # 打印文件开头内容以供调试
-          print("\n==== VideoScreen.kt 前 15 行 ====")
-          with open(video_file, "r") as f:
-              for i, line in enumerate(f):
-                  if i >= 15: break
-                  print(f"{i+1}: {line.rstrip()}")
-          print("==== end ====\n")
-          PYFIX
+          # 调试输出：显示修改后的文件前 25 行和依赖片段
+          echo "===== VideoScreen.kt 前 25 行 ====="
+          head -n 25 "$FILE"
+          echo "===== build.gradle.kts 中的 implementation 行 ====="
+          grep -n 'implementation' app/build.gradle.kts
+          echo "===== compose 设置 ====="
+          grep -A3 'buildFeatures' app/build.gradle.kts || echo "未找到 buildFeatures"
 
       # ---------- 模型下载 ----------
       - name: Create model directory
