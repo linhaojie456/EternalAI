@@ -25,7 +25,6 @@ jobs:
       - uses: actions/setup-python@v5
         with: {python-version: '3.10'}
 
-      # 模型下载
       - name: Create model directory
         run: mkdir -p app/src/main/assets/model
 
@@ -59,12 +58,10 @@ jobs:
           else: sys.exit(1)
           PYEOF
 
-      # 构建 APK
       - name: Build debug APK
         run: gradle assembleDebug -Dorg.gradle.jvmargs="-Xmx6g"
         env: {GRADLE_OPTS: "-Xmx6g"}
 
-      # 离线推理验证
       - name: Install validation dependencies
         run: pip install onnxruntime tokenizers
 
@@ -144,7 +141,6 @@ jobs:
           print(f"离线推理验证通过: {success} 条对话")
           PYEOF
 
-      # 模拟器验证
       - name: Setup Android Emulator (arm64)
         uses: reactivecircus/android-emulator-runner@v2
         with:
@@ -180,7 +176,6 @@ jobs:
                 echo "$log"
             fi
 
-      # 上传 APK
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with: {name: "永恒之神-APK", path: "app/build/outputs/apk/debug/app-debug.apk"}
