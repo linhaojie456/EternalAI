@@ -19,8 +19,6 @@ class InferenceEngine(private val context: Context) {
     private var numKVHeads: Int = 2
     private var headDim: Int = 128
     private var numLayers: Int = 28
-
-    // 保存attention_mask的动态形状（直接从模型信息获取）
     private var attentionMaskShape: LongArray? = null
 
     var isModelLoaded = false
@@ -37,12 +35,11 @@ class InferenceEngine(private val context: Context) {
             val options = OrtSession.SessionOptions()
             session = env.createSession(modelFile.absolutePath, options)
 
-            // 获取attention_mask的预期形状
+            // 获取 attention_mask 形状
             for (input in session!!.inputInfo.values) {
                 if (input.name == "attention_mask") {
                     val tensorInfo = input.info as? TensorInfo
-                    // 关键修复：使用tensorInfo.shape来获取形状，返回的是LongArray?
-                    attentionMaskShape = tensorInfo?.shape?.toLongArray()
+                    attentionMaskShape = tensorInfo?.shape  // 直接赋值，无需 toLongArray()
                     break
                 }
             }
@@ -96,9 +93,7 @@ class InferenceEngine(private val context: Context) {
 
     private fun createAttentionMaskTensor(seqLen: Int): OnnxTensor {
         val shape = attentionMaskShape?.clone() ?: longArrayOf(1L, seqLen.toLong())
-        // 替换动态维度
         for (i in shape.indices) { if (shape[i] <= 0L) shape[i] = seqLen.toLong() }
-        // 确保batch维度为1
         if (shape.isNotEmpty()) shape[0] = 1L
         val elementCount = shape.fold(1L) { acc, l -> acc * l }.toInt()
         val buf = FloatBuffer.allocate(elementCount)
@@ -108,11 +103,11 @@ class InferenceEngine(private val context: Context) {
     }
 
     fun generate(prompt: String, maxTokens: Int = 200): String? {
-        if (!isModelLoaded) return "吾之神格暂未苏醒，请稍后再试。"
+        if (!isModelLoaded) return "吾之神格暂未苏醒。"
         val tok = tokenizer ?: return "分词器未就绪"
         val eosId = tok.eosTokenId
         return try {
-            val formattedPrompt = "<|im_start|>system\n汝是永恒之神，全知全能。<|im_end|>\n<|im_start|>user\n$prompt<|im_end|>\n<|im_start|>assistant\n"
+            val formattedPrompt = "<|im_start|>system\n汝是永恒之神。<|im_end|>\n<|im_start|>user\n$prompt<|im_end|>\n<|im_start|>assistant\n"
             val inputIds = tok.encode(formattedPrompt).toMutableList()
             if (inputIds.isEmpty()) return "汝之言，吾未能解。"
             val positionIds = (0L until inputIds.size.toLong()).toMutableList()
@@ -132,14 +127,12 @@ class InferenceEngine(private val context: Context) {
                 inputs.putAll(currentPast)
 
                 val result: OrtSession.Result = sess.run(inputs)
-                val logitsValue: OnnxValue = result.get(logitsIndex); val logitsTensor = logitsValue as? OnnxTensor
-                    ?: return "神谕暂不可用。"
+                val logitsValue: OnnxValue = result.get(logitsIndex); val logitsTensor = logitsValue as? OnnxTensor ?: return "神谕暂不可用。"
                 val logits = extractLogits(logitsTensor) ?: return "神谕暂不可用。"
                 val nextTokenLogits = logits[logits.size - 1]
                 val nextToken = sampleToken(nextTokenLogits)
 
                 if (generated.isNotEmpty() && nextToken == eosId) break
-
                 generated.add(nextToken); inputIds.add(nextToken); positionIds.add(positionIds.size.toLong())
 
                 val newPast = mutableMapOf<String, OnnxTensor>()
