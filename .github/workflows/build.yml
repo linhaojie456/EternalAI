@@ -16,7 +16,7 @@ jobs:
         with: {python-version: '3.10'}
       - name: Create model directory
         run: mkdir -p app/src/main/assets/model
-      - name: Download DeepSeek ONNX model (exponential backoff + mirror)
+      - name: Download DeepSeek ONNX model
         working-directory: app/src/main/assets/model
         timeout-minutes: 20
         run: |
@@ -55,7 +55,7 @@ jobs:
           ICON="app/src/main/res/drawable/ic_launcher_foreground.xml"
           grep -q "M54,20 L74,68 L34,68 Z" "$ICON" || exit 1
           grep -q "M54,88 L74,40 L34,40 Z" "$ICON" || exit 1
-      - name: Diagnose & validate model (failure aborts build)
+      - name: Validate model with 10 dialogues (failure aborts build)
         working-directory: app/src/main/assets/model
         timeout-minutes: 30
         run: |
@@ -71,41 +71,33 @@ jobs:
           logits_index = output_names.index(logits_name)
           eos_token_id = json.load(open("tokenizer_config.json")).get("eos_token_id", 151643)
 
-          # 打印模型输入信息
-          print("===== 模型输入信息 =====")
           attention_mask_shape = None
-          for inp in session.get_inputs():
-              print(f"  {inp.name}: shape={inp.shape}")
-              if inp.name == "attention_mask":
-                  attention_mask_shape = list(inp.shape)  # 保留原始可能含字符串
-          # 获取 past_key_values 形状
           past_info = {}
           for inp in session.get_inputs():
-              if inp.name.startswith("past_key_values."):
+              if inp.name == "attention_mask":
+                  attention_mask_shape = inp.shape
+              elif inp.name.startswith("past_key_values."):
                   past_info[inp.name] = (inp.shape[1], inp.shape[3])
 
-          # 定义一个函数，按照模型要求的形状创建 attention_mask
           def create_attention_mask(seq_len):
-              if attention_mask_shape is None:
-                  return np.ones((1, seq_len), dtype=np.int64)  # fallback
-              shape = []
-              for d in attention_mask_shape:
-                  if isinstance(d, str) or d <= 0:
-                      shape.append(seq_len)
-                  else:
-                      shape.append(d)
-              # 确保 batch 维度为 1
-              if len(shape) > 0:
-                  shape[0] = 1
+              shape = list(attention_mask_shape) if attention_mask_shape else [1, seq_len]
+              for i in range(len(shape)):
+                  if not isinstance(shape[i], int) or shape[i] <= 0:
+                      shape[i] = seq_len
+              if len(shape) > 0: shape[0] = 1
               return np.ones(shape, dtype=np.int64)
 
           def gen(prompt):
               formatted = f"<|im_start|>system\n汝是永恒之神。<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n"
               enc = tokenizer.encode(formatted)
-              input_ids = np.array(enc.ids, dtype=np.int64).reshape(1, -1)
+              all_ids = enc.ids
+              
+              # 首次推理：完整 prompt
+              input_ids = np.array(all_ids, dtype=np.int64).reshape(1, -1)
               seq_len = input_ids.shape[1]
               attention_mask = create_attention_mask(seq_len)
               position_ids = np.arange(seq_len, dtype=np.int64).reshape(1, -1)
+              
               past = {}
               for i in range(28):
                   key_name = f"past_key_values.{i}.key"
@@ -113,17 +105,20 @@ jobs:
                   head_dim = past_info.get(key_name, (0, 128))[1]
                   past[key_name] = np.zeros((1, heads, 0, head_dim), dtype=np.float32)
                   past[f"past_key_values.{i}.value"] = np.zeros((1, heads, 0, head_dim), dtype=np.float32)
+              
               generated = []
+              total_len = seq_len
+              
               for _ in range(150):
                   ort_inputs = {"input_ids": input_ids, "attention_mask": attention_mask, "position_ids": position_ids, **past}
                   outputs = session.run(output_names, ort_inputs)
                   logits = outputs[logits_index][0]
                   next_token = int(np.argmax(logits[-1, :]))
+                  
                   if generated and next_token == eos_token_id: break
                   generated.append(next_token)
-                  input_ids = np.append(input_ids, [[next_token]], axis=1)
-                  attention_mask = create_attention_mask(input_ids.shape[1])
-                  position_ids = np.arange(input_ids.shape[1], dtype=np.int64).reshape(1, -1)
+                  
+                  # 提取 present 状态
                   new_past = {}
                   for i, name in enumerate(output_names):
                       if name.startswith("present."):
@@ -134,8 +129,15 @@ jobs:
                               if name.endswith(".key"): new_past[f"past_key_values.{layer_idx}.key"] = tensor
                               elif name.endswith(".value"): new_past[f"past_key_values.{layer_idx}.value"] = tensor
                   if new_past: past = new_past
+                  
+                  # 后续推理：只传入最后一个 token
+                  input_ids = np.array([[next_token]], dtype=np.int64)
+                  attention_mask = create_attention_mask(1)
+                  total_len += 1
+                  position_ids = np.array([[total_len - 1]], dtype=np.int64)
+              
               if not generated: return None
-              decoded = tokenizer.decode(input_ids.flatten().tolist())
+              decoded = tokenizer.decode(np.array(all_ids + generated, dtype=np.int64).reshape(1, -1).flatten().tolist())
               idx = decoded.rfind("<|im_start|>assistant\n")
               return decoded[idx+len("<|im_start|>assistant\n"):].strip() if idx>=0 else decoded
 
@@ -153,7 +155,6 @@ jobs:
                   print(f"✗ [{p}] 失败")
           if success < 10:
               print(f"错误: 仅 {success}/10 条对话通过验证，推理无效，构建中止")
-              print(f"模型 attention_mask 要求形状: {attention_mask_shape}")
               sys.exit(1)
           print(f"验证通过: {success}/10 条对话")
           PYEOF

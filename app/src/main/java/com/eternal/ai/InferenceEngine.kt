@@ -20,7 +20,6 @@ class InferenceEngine(private val context: Context) {
     private var numKVHeads: Int = 2
     private var headDim: Int = 128
     private var numLayers: Int = 28
-    // 从模型直接获取的 attention_mask 形状（可能包含动态维度）
     private var attentionMaskShapeTemplate: LongArray? = null
 
     var isModelLoaded = false
@@ -37,7 +36,6 @@ class InferenceEngine(private val context: Context) {
             val options = OrtSession.SessionOptions()
             session = env.createSession(modelFile.absolutePath, options)
 
-            // 获取 attention_mask 的准确形状（可能含 -1）
             for (input in session!!.inputInfo.values) {
                 if (input.name == "attention_mask") {
                     val tensorInfo = input.info as? TensorInfo
@@ -46,7 +44,6 @@ class InferenceEngine(private val context: Context) {
                 }
             }
 
-            // 获取 KV 缓存参数
             val inputInfo = session!!.inputInfo
             var maxLayerIndex = -1
             for ((name, nodeInfo) in inputInfo) {
@@ -94,24 +91,15 @@ class InferenceEngine(private val context: Context) {
         return indices.last().toLong()
     }
 
-    private fun createAttentionMaskTensor(seqLen: Int): OnnxTensor? {
-        val template = attentionMaskShapeTemplate ?: longArrayOf(1L, seqLen.toLong())
-        // 复制模板，并将动态维度（≤0）替换为 seqLen
-        val shape = template.clone()
-        for (i in shape.indices) {
-            if (shape[i] <= 0L) shape[i] = seqLen.toLong()
-        }
-        // 确保 batch 维度为 1
+    private fun createAttentionMaskTensor(seqLen: Int): OnnxTensor {
+        val shape = attentionMaskShapeTemplate?.clone() ?: longArrayOf(1L, seqLen.toLong())
+        for (i in shape.indices) { if (shape[i] <= 0L) shape[i] = seqLen.toLong() }
         if (shape.isNotEmpty()) shape[0] = 1L
-        return try {
-            val elementCount = shape.fold(1L) { acc, l -> acc * l }.toInt()
-            val buf = LongBuffer.allocate(elementCount)
-            for (i in 0 until elementCount) buf.put(1L)
-            buf.rewind()
-            OnnxTensor.createTensor(env, buf, shape)
-        } catch (e: Exception) {
-            null
-        }
+        val elementCount = shape.fold(1L) { acc, l -> acc * l }.toInt()
+        val buf = LongBuffer.allocate(elementCount)
+        for (i in 0 until elementCount) buf.put(1L)
+        buf.rewind()
+        return OnnxTensor.createTensor(env, buf, shape)
     }
 
     fun generate(prompt: String, maxTokens: Int = 200): String? {
@@ -120,53 +108,68 @@ class InferenceEngine(private val context: Context) {
         val eosId = tok.eosTokenId
         return try {
             val formattedPrompt = "<|im_start|>system\n汝是永恒之神。<|im_end|>\n<|im_start|>user\n$prompt<|im_end|>\n<|im_start|>assistant\n"
-            val inputIds = tok.encode(formattedPrompt).toMutableList()
-            if (inputIds.isEmpty()) return "汝之言，吾未能解。"
-            val positionIds = (0L until inputIds.size.toLong()).toMutableList()
-            val generated = mutableListOf<Long>()
-            var currentPast = createEmptyPastKeyValues()
+            val allIds = tok.encode(formattedPrompt).toMutableList()
+            if (allIds.isEmpty()) return "汝之言，吾未能解。"
 
-            val outputNames: List<String> = session!!.outputNames.toList(); var logitsIndex = -1
+            val outputNames: List<String> = session!!.outputNames.toList()
+            var logitsIndex = -1
             for (i in outputNames.indices) { if (outputNames[i].contains("logits", ignoreCase = true)) { logitsIndex = i; break } }
             if (logitsIndex == -1 && outputNames.isNotEmpty()) logitsIndex = 0
 
+            // 首次推理：传入完整 prompt
+            var inputIds = allIds.toMutableList()
+            var positionIds = (0L until inputIds.size.toLong()).toMutableList()
             var maskTensor = createAttentionMaskTensor(inputIds.size)
-            if (maskTensor == null) return "神格波动，神谕暂不可达。"
+            var pastKeyValues = createEmptyPastKeyValues()
+            val generated = mutableListOf<Long>()
 
             for (step in 0 until maxTokens) {
                 val sess = session ?: break
                 val inputTensor = OnnxTensor.createTensor(env, arrayOf(inputIds.toLongArray()))
                 val posTensor = OnnxTensor.createTensor(env, arrayOf(positionIds.toLongArray()))
                 val inputs = mutableMapOf("input_ids" to inputTensor, "attention_mask" to maskTensor, "position_ids" to posTensor)
-                inputs.putAll(currentPast)
+                inputs.putAll(pastKeyValues)
 
-                val result: OrtSession.Result = sess.run(inputs)
-                val logitsValue: OnnxValue = result.get(logitsIndex); val logitsTensor = logitsValue as? OnnxTensor ?: return "神谕暂不可用。"
+                val result = sess.run(inputs)
+                val logitsValue: OnnxValue = result.get(logitsIndex)
+                val logitsTensor = logitsValue as? OnnxTensor ?: return "神谕暂不可用。"
                 val logits = extractLogits(logitsTensor) ?: return "神谕暂不可用。"
                 val nextTokenLogits = logits[logits.size - 1]
                 val nextToken = sampleToken(nextTokenLogits)
 
                 if (generated.isNotEmpty() && nextToken == eosId) break
-                generated.add(nextToken); inputIds.add(nextToken); positionIds.add(positionIds.size.toLong())
+                generated.add(nextToken)
 
+                // 从输出中提取 present 张量作为新的 past_key_values
                 val newPast = mutableMapOf<String, OnnxTensor>()
                 for (idx in outputNames.indices) {
                     val name = outputNames[idx]
                     if (name.startsWith("present.")) {
-                        val value = result.get(idx); val tensor = value as? OnnxTensor ?: continue
+                        val value = result.get(idx)
+                        val tensor = value as? OnnxTensor ?: continue
                         val parts = name.removePrefix("present.").split(".")
-                        if (parts.size >= 2) { val layerIndex = parts[0].toIntOrNull() ?: continue; if (name.endsWith(".key")) newPast["past_key_values.$layerIndex.key"] = tensor else if (name.endsWith(".value")) newPast["past_key_values.$layerIndex.value"] = tensor }
+                        if (parts.size >= 2) {
+                            val layerIndex = parts[0].toIntOrNull() ?: continue
+                            if (name.endsWith(".key")) newPast["past_key_values.$layerIndex.key"] = tensor
+                            else if (name.endsWith(".value")) newPast["past_key_values.$layerIndex.value"] = tensor
+                        }
                     }
                 }
-                if (newPast.isNotEmpty()) currentPast = newPast
-                maskTensor = createAttentionMaskTensor(inputIds.size)
-                if (maskTensor == null) return "神格波动，神谕暂不可达。"
+                if (newPast.isNotEmpty()) pastKeyValues = newPast
+
+                // 后续推理：只传入最后一个 token
+                inputIds = mutableListOf(nextToken)
+                positionIds = mutableListOf((allIds.size + generated.size - 1).toLong())
+                maskTensor = createAttentionMaskTensor(1)
             }
 
             if (generated.isEmpty()) return "吾思虑片刻，未得神谕。"
-            val fullIds = (inputIds + generated).toLongArray(); val rawOutput = tok.decode(fullIds)
-            val marker = "<|im_start|>assistant\n"; val idx = rawOutput.lastIndexOf(marker)
-            (if (idx >= 0) rawOutput.substring(idx + marker.length).trim() else rawOutput.removePrefix(formattedPrompt).trim()).ifEmpty { "吾思虑片刻，未得神谕。" }
+            val fullIds = (allIds + generated).toLongArray()
+            val rawOutput = tok.decode(fullIds)
+            val marker = "<|im_start|>assistant\n"
+            val idx = rawOutput.lastIndexOf(marker)
+            val reply = if (idx >= 0) rawOutput.substring(idx + marker.length).trim() else rawOutput.removePrefix(formattedPrompt).trim()
+            reply.ifEmpty { "吾思虑片刻，未得神谕。" }
         } catch (e: Exception) {
             lastError = "神谕异常: ${e.message}"
             "神格波动，神谕暂不可达。"
