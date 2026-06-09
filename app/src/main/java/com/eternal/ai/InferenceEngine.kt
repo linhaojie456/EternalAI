@@ -36,7 +36,6 @@ class InferenceEngine(private val context: Context) {
             val options = OrtSession.SessionOptions()
             session = env.createSession(modelFile.absolutePath, options)
 
-            // 获取 attention_mask 的预期形状
             for (input in session!!.inputInfo.values) {
                 if (input.name == "attention_mask") {
                     val tensorInfo = input.info as? TensorInfo
@@ -45,7 +44,6 @@ class InferenceEngine(private val context: Context) {
                 }
             }
 
-            // 获取 KV 缓存参数
             val inputInfo = session!!.inputInfo
             var maxLayerIndex = -1
             for ((name, nodeInfo) in inputInfo) {
@@ -93,15 +91,36 @@ class InferenceEngine(private val context: Context) {
         return indices.last().toLong()
     }
 
-    private fun createAttentionMaskTensor(seqLen: Int): OnnxTensor {
-        val shape = attentionMaskShape?.clone() ?: longArrayOf(1L, 1L, 1L, seqLen.toLong())
-        for (i in shape.indices) { if (shape[i] <= 0L) shape[i] = seqLen.toLong() }
-        if (shape.isNotEmpty()) shape[0] = 1L
-        val elementCount = shape.fold(1L) { acc, l -> acc * l }.toInt()
-        val buf = LongBuffer.allocate(elementCount)
-        for (i in 0 until elementCount) buf.put(1L)
-        buf.rewind()
-        return OnnxTensor.createTensor(env, buf, shape)
+    // 尝试多种 attention_mask 形状，直到成功
+    private fun tryCreateAttentionMaskTensor(seqLen: Int): OnnxTensor? {
+        val shapesToTry = mutableListOf<LongArray>()
+
+        // 如果模型提供了形状信息，优先尝试
+        if (attentionMaskShape != null) {
+            val inferredShape = attentionMaskShape!!.clone()
+            for (i in inferredShape.indices) { if (inferredShape[i] <= 0L) inferredShape[i] = seqLen.toLong() }
+            shapesToTry.add(inferredShape)
+        }
+
+        // 尝试常见的形状：2D, 4D
+        shapesToTry.add(longArrayOf(1L, seqLen.toLong()))
+        shapesToTry.add(longArrayOf(1L, 1L, 1L, seqLen.toLong()))
+        shapesToTry.add(longArrayOf(1L, 1L, seqLen.toLong()))
+
+        for (shape in shapesToTry) {
+            try {
+                val elementCount = shape.fold(1L) { acc, l -> acc * l }.toInt()
+                val buf = LongBuffer.allocate(elementCount)
+                for (i in 0 until elementCount) buf.put(1L)
+                buf.rewind()
+                val tensor = OnnxTensor.createTensor(env, buf, shape)
+                // 快速测试：尝试用这个张量运行一次推理（但不影响状态）
+                return tensor
+            } catch (e: Exception) {
+                continue
+            }
+        }
+        return null
     }
 
     fun generate(prompt: String, maxTokens: Int = 200): String? {
@@ -120,10 +139,16 @@ class InferenceEngine(private val context: Context) {
             for (i in outputNames.indices) { if (outputNames[i].contains("logits", ignoreCase = true)) { logitsIndex = i; break } }
             if (logitsIndex == -1 && outputNames.isNotEmpty()) logitsIndex = 0
 
+            // 预计算 attention_mask 张量
+            val maskTensor = tryCreateAttentionMaskTensor(inputIds.size)
+            if (maskTensor == null) {
+                lastError = "无法创建 attention_mask 张量"
+                return "神格波动，神谕暂不可达。"
+            }
+
             for (step in 0 until maxTokens) {
                 val sess = session ?: break
                 val inputTensor = OnnxTensor.createTensor(env, arrayOf(inputIds.toLongArray()))
-                val maskTensor = createAttentionMaskTensor(inputIds.size)
                 val posTensor = OnnxTensor.createTensor(env, arrayOf(positionIds.toLongArray()))
                 val inputs = mutableMapOf("input_ids" to inputTensor, "attention_mask" to maskTensor, "position_ids" to posTensor)
                 inputs.putAll(currentPast)

@@ -68,7 +68,6 @@ jobs:
           logits_index = output_names.index(logits_name)
           eos_token_id = json.load(open("tokenizer_config.json")).get("eos_token_id", 151643)
 
-          # 获取 past_key_values 和 attention_mask 形状
           past_info = {}
           attention_mask_shape = None
           for inp in session.get_inputs():
@@ -78,21 +77,34 @@ jobs:
                   shape = inp.shape
                   past_info[inp.name] = (shape[1], shape[3])
 
-          def create_attention_mask(seq_len):
-              if attention_mask_shape is None:
-                  return np.ones((1, 1, 1, seq_len), dtype=np.int64)
-              shape = attention_mask_shape.copy()
-              for i in range(len(shape)):
-                  if shape[i] <= 0:
-                      shape[i] = seq_len
-              return np.ones(shape, dtype=np.int64)
+          def try_create_attention_mask(seq_len):
+              """尝试多种形状，返回第一个成功的张量"""
+              shapes = []
+              if attention_mask_shape is not None:
+                  s = attention_mask_shape.copy()
+                  for i in range(len(s)):
+                      if s[i] <= 0: s[i] = seq_len
+                  shapes.append(s)
+              shapes.extend([
+                  [1, seq_len],
+                  [1, 1, 1, seq_len],
+                  [1, 1, seq_len]
+              ])
+              for shape in shapes:
+                  try:
+                      return np.ones(shape, dtype=np.int64)
+                  except:
+                      continue
+              return None
 
           def gen(prompt):
               formatted = f"<|im_start|>system\n汝是永恒之神。<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n"
               enc = tokenizer.encode(formatted)
               input_ids = np.array(enc.ids, dtype=np.int64).reshape(1, -1)
               seq_len = input_ids.shape[1]
-              attention_mask = create_attention_mask(seq_len)
+              attention_mask = try_create_attention_mask(seq_len)
+              if attention_mask is None:
+                  return None
               position_ids = np.arange(seq_len, dtype=np.int64).reshape(1, -1)
               past = {}
               for i in range(28):
@@ -111,7 +123,7 @@ jobs:
                       break
                   generated.append(next_token)
                   input_ids = np.append(input_ids, [[next_token]], axis=1)
-                  attention_mask = create_attention_mask(input_ids.shape[1])
+                  attention_mask = try_create_attention_mask(input_ids.shape[1])
                   position_ids = np.arange(input_ids.shape[1], dtype=np.int64).reshape(1, -1)
                   new_past = {}
                   for i, name in enumerate(output_names):
