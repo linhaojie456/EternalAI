@@ -21,10 +21,26 @@ jobs:
         timeout-minutes: 20
         run: |
           pip install -q transformers optimum onnx onnxruntime
-          optimum-cli export onnx --model Qwen/Qwen2.5-0.5B-Instruct --task text-generation-with-past .
-          ls -lh model.onnx tokenizer.json
-          if [ ! -s model.onnx ]; then echo "ONNX export failed"; exit 1; fi
-          if [ ! -s tokenizer.json ]; then echo "Tokenizer export failed"; exit 1; fi
+          python3 << 'PYEOF'
+          from optimum.onnxruntime import ORTModelForCausalLM
+          from transformers import AutoTokenizer
+          import os, sys
+
+          model_id = "Qwen/Qwen2.5-0.5B-Instruct"
+          print(f"Downloading and exporting {model_id} to ONNX...")
+          model = ORTModelForCausalLM.from_pretrained(model_id, export=True)
+          tokenizer = AutoTokenizer.from_pretrained(model_id)
+
+          model.save_pretrained(".")
+          tokenizer.save_pretrained(".")
+
+          for fname in ["model.onnx", "tokenizer.json", "tokenizer_config.json"]:
+              if not os.path.exists(fname) or os.path.getsize(fname) < 1000:
+                  print(f"ERROR: {fname} missing or too small")
+                  sys.exit(1)
+              print(f"✓ {fname}: {os.path.getsize(fname):,} bytes")
+          print("ONNX export completed successfully.")
+          PYEOF
       - name: Build debug APK
         run: gradle assembleDebug -Dorg.gradle.jvmargs="-Xmx6g"
         env: {GRADLE_OPTS: "-Xmx6g"}
