@@ -16,40 +16,50 @@ jobs:
         with: {python-version: '3.10'}
       - name: Create model directory
         run: mkdir -p app/src/main/assets/model
-      - name: Download & Convert DeepSeek to ONNX
+      - name: Download DeepSeek ONNX model (retry + mirror)
         working-directory: app/src/main/assets/model
-        timeout-minutes: 30
+        timeout-minutes: 20
         run: |
-          pip install -q transformers torch onnx onnxruntime
+          pip install -q huggingface_hub
           python3 << 'PYEOF'
-          from transformers import AutoModelForCausalLM, AutoTokenizer
-          import torch, onnx, os, sys
+          from huggingface_hub import hf_hub_download
+          import os, sys, time
 
-          model_id = "deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B"
-          print(f"Downloading {model_id}...")
-          tokenizer = AutoTokenizer.from_pretrained(model_id)
-          model = AutoModelForCausalLM.from_pretrained(model_id, torch_dtype=torch.float32, device_map="cpu")
+          mirrors = ["https://hf-mirror.com", "https://huggingface.co"]
+          repo_id = "onnx-community/DeepSeek-R1-Distill-Qwen-1.5B-ONNX"
+          files = {
+              "onnx/model_quantized.onnx": 800_000_000,
+              "tokenizer.json": 1_000_000,
+              "tokenizer_config.json": 100
+          }
 
-          print("Exporting to ONNX...")
-          dummy_input = torch.randint(0, tokenizer.vocab_size, (1, 10))
-          torch.onnx.export(
-              model, dummy_input, "model.onnx",
-              input_names=["input_ids", "attention_mask"],
-              output_names=["logits"],
-              dynamic_axes={
-                  "input_ids": {0: "batch", 1: "seq"},
-                  "attention_mask": {0: "batch", 1: "seq"},
-                  "logits": {0: "batch", 1: "seq"}
-              },
-              opset_version=14
-          )
-          tokenizer.save_pretrained(".")
-          print(f"Model size: {os.path.getsize('model.onnx'):,} bytes")
-          print(f"Tokenizer saved. Files: {os.listdir('.')}")
-          if os.path.getsize('model.onnx') < 1_000_000:
-              print("ERROR: model.onnx too small")
+          def dl_with_retry(fname, min_size, max_retries=5):
+              for mirror in mirrors:
+                  os.environ["HF_ENDPOINT"] = mirror
+                  for attempt in range(max_retries):
+                      try:
+                          print(f"[{mirror}] Downloading {fname} (attempt {attempt+1})...")
+                          path = hf_hub_download(repo_id, fname, local_dir=".")
+                          size = os.path.getsize(path)
+                          if size >= min_size: return path
+                          print(f"  ⚠ size {size} < {min_size}")
+                      except Exception as e:
+                          print(f"  ✗ Error: {e}")
+                      wait = 2 ** attempt
+                      time.sleep(wait)
+              return None
+
+          for fname, min_size in files.items():
+              if not dl_with_retry(fname, min_size):
+                  sys.exit(1)
+
+          if os.path.exists("onnx/model_quantized.onnx"):
+              os.rename("onnx/model_quantized.onnx", "model.onnx")
+              os.rmdir("onnx")
+          else:
+              print("model file not found after download")
               sys.exit(1)
-          print("ONNX export completed.")
+          print("All model files downloaded successfully.")
           PYEOF
       - name: Build debug APK
         run: gradle assembleDebug -Dorg.gradle.jvmargs="-Xmx6g"
@@ -77,14 +87,25 @@ jobs:
           logits_index = output_names.index(logits_name)
           eos_token_id = json.load(open("tokenizer_config.json")).get("eos_token_id", 151643)
 
+          # 获取 attention_mask 的准确形状
+          attention_mask_shape = None
+          for inp in session.get_inputs():
+              if inp.name == "attention_mask":
+                  attention_mask_shape = inp.shape
+                  break
+
           past_info = {}
           for inp in session.get_inputs():
               if inp.name.startswith("past_key_values."):
-                  shape = inp.shape
-                  past_info[inp.name] = (shape[1], shape[3])
+                  past_info[inp.name] = (inp.shape[1], inp.shape[3])
 
           def create_attention_mask(seq_len):
-              return np.ones((1, seq_len), dtype=np.int64)
+              shape = list(attention_mask_shape) if attention_mask_shape else [1, seq_len]
+              for i in range(len(shape)):
+                  if not isinstance(shape[i], int) or shape[i] <= 0:
+                      shape[i] = seq_len
+              if len(shape) > 0: shape[0] = 1
+              return np.ones(shape, dtype=np.int64)
 
           def gen(prompt):
               formatted = f"<|im_start|>system\n汝是永恒之神。<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n"

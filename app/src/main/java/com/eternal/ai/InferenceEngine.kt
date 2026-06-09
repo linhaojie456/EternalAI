@@ -20,7 +20,7 @@ class InferenceEngine(private val context: Context) {
     private var numKVHeads: Int = 2
     private var headDim: Int = 128
     private var numLayers: Int = 28
-    private var attentionMaskShapeTemplate: LongArray? = null
+    private var attentionMaskShape: LongArray? = null
 
     var isModelLoaded = false
         private set
@@ -36,10 +36,11 @@ class InferenceEngine(private val context: Context) {
             val options = OrtSession.SessionOptions()
             session = env.createSession(modelFile.absolutePath, options)
 
+            // 获取 attention_mask 形状
             for (input in session!!.inputInfo.values) {
                 if (input.name == "attention_mask") {
                     val tensorInfo = input.info as? TensorInfo
-                    attentionMaskShapeTemplate = tensorInfo?.shape
+                    attentionMaskShape = tensorInfo?.shape
                     break
                 }
             }
@@ -92,7 +93,7 @@ class InferenceEngine(private val context: Context) {
     }
 
     private fun createAttentionMaskTensor(seqLen: Int): OnnxTensor {
-        val shape = attentionMaskShapeTemplate?.clone() ?: longArrayOf(1L, seqLen.toLong())
+        val shape = attentionMaskShape?.clone() ?: longArrayOf(1L, seqLen.toLong())
         for (i in shape.indices) { if (shape[i] <= 0L) shape[i] = seqLen.toLong() }
         if (shape.isNotEmpty()) shape[0] = 1L
         val elementCount = shape.fold(1L) { acc, l -> acc * l }.toInt()
@@ -150,6 +151,7 @@ class InferenceEngine(private val context: Context) {
                 if (generated.isNotEmpty() && nextToken == eosId) break
                 generated.add(nextToken)
 
+                // 提取 present 状态
                 val newPast = mutableMapOf<String, OnnxTensor>()
                 for (idx in outputNames.indices) {
                     val name = outputNames[idx]
@@ -166,6 +168,7 @@ class InferenceEngine(private val context: Context) {
                 }
                 if (newPast.isNotEmpty()) pastKeyValues = newPast
 
+                // 后续只传入最后一个 token
                 inputIds = mutableListOf(nextToken)
                 positionIds = mutableListOf((allIds.size + generated.size - 1).toLong())
                 maskTensor = createAttentionMaskTensor(1)
