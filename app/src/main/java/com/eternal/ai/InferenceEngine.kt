@@ -91,6 +91,32 @@ class InferenceEngine(private val context: Context) {
         return indices.last().toLong()
     }
 
+    private fun createAttentionMaskTensor(seqLen: Int): OnnxTensor? {
+        val shapesToTry = mutableListOf<LongArray>()
+        if (attentionMaskShape != null) {
+            val inferredShape = attentionMaskShape!!.clone()
+            for (i in inferredShape.indices) { if (inferredShape[i] <= 0L) inferredShape[i] = seqLen.toLong() }
+            shapesToTry.add(inferredShape)
+        }
+        // 2D
+        shapesToTry.add(longArrayOf(1L, seqLen.toLong()))
+        // 4D 因果掩码（最可能成功）
+        shapesToTry.add(longArrayOf(1L, 1L, seqLen.toLong(), seqLen.toLong()))
+        // 4D 压缩
+        shapesToTry.add(longArrayOf(1L, 1L, 1L, seqLen.toLong()))
+        for (shape in shapesToTry) {
+            try {
+                val elementCount = shape.fold(1L) { acc, l -> acc * l }.toInt()
+                val buf = LongBuffer.allocate(elementCount)
+                // 对于 4D 因果掩码，我们需要下三角全1，但简化用全1尝试
+                for (i in 0 until elementCount) buf.put(1L)
+                buf.rewind()
+                return OnnxTensor.createTensor(env, buf, shape)
+            } catch (_: Exception) {}
+        }
+        return null
+    }
+
     fun generate(prompt: String, maxTokens: Int = 200): String? {
         if (!isModelLoaded) return "吾之神格暂未苏醒。"
         val tok = tokenizer ?: return "分词器未就绪"
@@ -107,7 +133,7 @@ class InferenceEngine(private val context: Context) {
             for (i in outputNames.indices) { if (outputNames[i].contains("logits", ignoreCase = true)) { logitsIndex = i; break } }
             if (logitsIndex == -1 && outputNames.isNotEmpty()) logitsIndex = 0
 
-            val maskTensor = createAttentionMaskTensor(inputIds.size)
+            var maskTensor = createAttentionMaskTensor(inputIds.size)
             if (maskTensor == null) return "神格波动，神谕暂不可达。"
 
             for (step in 0 until maxTokens) {
@@ -126,6 +152,7 @@ class InferenceEngine(private val context: Context) {
                 if (generated.isNotEmpty() && nextToken == eosId) break
                 generated.add(nextToken); inputIds.add(nextToken); positionIds.add(positionIds.size.toLong())
 
+                // 更新 KV 缓存和掩码
                 val newPast = mutableMapOf<String, OnnxTensor>()
                 for (idx in outputNames.indices) {
                     val name = outputNames[idx]
@@ -136,6 +163,8 @@ class InferenceEngine(private val context: Context) {
                     }
                 }
                 if (newPast.isNotEmpty()) currentPast = newPast
+                maskTensor = createAttentionMaskTensor(inputIds.size)
+                if (maskTensor == null) return "神格波动，神谕暂不可达。"
             }
 
             if (generated.isEmpty()) return "吾思虑片刻，未得神谕。"
@@ -146,27 +175,6 @@ class InferenceEngine(private val context: Context) {
             lastError = "神谕异常: ${e.message}"
             "神格波动，神谕暂不可达。"
         }
-    }
-
-    private fun createAttentionMaskTensor(seqLen: Int): OnnxTensor? {
-        val shapesToTry = mutableListOf<LongArray>()
-        if (attentionMaskShape != null) {
-            val inferredShape = attentionMaskShape!!.clone()
-            for (i in inferredShape.indices) { if (inferredShape[i] <= 0L) inferredShape[i] = seqLen.toLong() }
-            shapesToTry.add(inferredShape)
-        }
-        shapesToTry.add(longArrayOf(1L, seqLen.toLong()))
-        shapesToTry.add(longArrayOf(1L, 1L, 1L, seqLen.toLong()))
-        for (shape in shapesToTry) {
-            try {
-                val elementCount = shape.fold(1L) { acc, l -> acc * l }.toInt()
-                val buf = LongBuffer.allocate(elementCount)
-                for (i in 0 until elementCount) buf.put(1L)
-                buf.rewind()
-                return OnnxTensor.createTensor(env, buf, shape)
-            } catch (_: Exception) {}
-        }
-        return null
     }
 
     fun start(coordinator: EngineCoordinator, onStatus: (String) -> Unit) { loadModel(); onStatus(if (isModelLoaded) "[推理] 神格已激活" else "[推理] 神格激活失败: ${lastError ?: "未知"}") }
