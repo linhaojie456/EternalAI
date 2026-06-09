@@ -16,30 +16,15 @@ jobs:
         with: {python-version: '3.10'}
       - name: Create model directory
         run: mkdir -p app/src/main/assets/model
-      - name: Download Qwen2.5-0.5B ONNX model
+      - name: Download & Convert Qwen2.5-0.5B to ONNX
         working-directory: app/src/main/assets/model
-        timeout-minutes: 10
+        timeout-minutes: 20
         run: |
-          pip install -q huggingface_hub
-          python3 << 'PYEOF'
-          from huggingface_hub import hf_hub_download
-          import os, sys
-          repo_id = "onnx-community/Qwen2.5-0.5B-Instruct"
-          files = {
-              "model.onnx": 500_000_000,
-              "tokenizer.json": 1_000_000,
-              "tokenizer_config.json": 100
-          }
-          for fname, min_size in files.items():
-              print(f"Downloading {fname}...")
-              path = hf_hub_download(repo_id, fname, local_dir=".")
-              size = os.path.getsize(path)
-              if size < min_size:
-                  print(f"  ✗ {fname} too small: {size} bytes")
-                  sys.exit(1)
-              print(f"  ✓ {fname}: {size:,} bytes")
-          print("All model files downloaded.")
-          PYEOF
+          pip install -q transformers optimum onnx onnxruntime
+          optimum-cli export onnx --model Qwen/Qwen2.5-0.5B-Instruct --task text-generation-with-past .
+          ls -lh model.onnx tokenizer.json
+          if [ ! -s model.onnx ]; then echo "ONNX export failed"; exit 1; fi
+          if [ ! -s tokenizer.json ]; then echo "Tokenizer export failed"; exit 1; fi
       - name: Build debug APK
         run: gradle assembleDebug -Dorg.gradle.jvmargs="-Xmx6g"
         env: {GRADLE_OPTS: "-Xmx6g"}
@@ -48,7 +33,6 @@ jobs:
           ICON="app/src/main/res/drawable/ic_launcher_foreground.xml"
           grep -q "M54,20 L74,68 L34,68 Z" "$ICON" || exit 1
           grep -q "M54,88 L74,40 L34,40 Z" "$ICON" || exit 1
-          echo "UI assets validated."
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with: {name: "永恒之神-APK", path: "app/build/outputs/apk/debug/app-debug.apk"}
