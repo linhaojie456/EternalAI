@@ -91,38 +91,6 @@ class InferenceEngine(private val context: Context) {
         return indices.last().toLong()
     }
 
-    // 尝试多种 attention_mask 形状，直到成功
-    private fun tryCreateAttentionMaskTensor(seqLen: Int): OnnxTensor? {
-        val shapesToTry = mutableListOf<LongArray>()
-
-        // 如果模型提供了形状信息，优先尝试
-        if (attentionMaskShape != null) {
-            val inferredShape = attentionMaskShape!!.clone()
-            for (i in inferredShape.indices) { if (inferredShape[i] <= 0L) inferredShape[i] = seqLen.toLong() }
-            shapesToTry.add(inferredShape)
-        }
-
-        // 尝试常见的形状：2D, 4D
-        shapesToTry.add(longArrayOf(1L, seqLen.toLong()))
-        shapesToTry.add(longArrayOf(1L, 1L, 1L, seqLen.toLong()))
-        shapesToTry.add(longArrayOf(1L, 1L, seqLen.toLong()))
-
-        for (shape in shapesToTry) {
-            try {
-                val elementCount = shape.fold(1L) { acc, l -> acc * l }.toInt()
-                val buf = LongBuffer.allocate(elementCount)
-                for (i in 0 until elementCount) buf.put(1L)
-                buf.rewind()
-                val tensor = OnnxTensor.createTensor(env, buf, shape)
-                // 快速测试：尝试用这个张量运行一次推理（但不影响状态）
-                return tensor
-            } catch (e: Exception) {
-                continue
-            }
-        }
-        return null
-    }
-
     fun generate(prompt: String, maxTokens: Int = 200): String? {
         if (!isModelLoaded) return "吾之神格暂未苏醒。"
         val tok = tokenizer ?: return "分词器未就绪"
@@ -139,12 +107,8 @@ class InferenceEngine(private val context: Context) {
             for (i in outputNames.indices) { if (outputNames[i].contains("logits", ignoreCase = true)) { logitsIndex = i; break } }
             if (logitsIndex == -1 && outputNames.isNotEmpty()) logitsIndex = 0
 
-            // 预计算 attention_mask 张量
-            val maskTensor = tryCreateAttentionMaskTensor(inputIds.size)
-            if (maskTensor == null) {
-                lastError = "无法创建 attention_mask 张量"
-                return "神格波动，神谕暂不可达。"
-            }
+            val maskTensor = createAttentionMaskTensor(inputIds.size)
+            if (maskTensor == null) return "神格波动，神谕暂不可达。"
 
             for (step in 0 until maxTokens) {
                 val sess = session ?: break
@@ -182,6 +146,27 @@ class InferenceEngine(private val context: Context) {
             lastError = "神谕异常: ${e.message}"
             "神格波动，神谕暂不可达。"
         }
+    }
+
+    private fun createAttentionMaskTensor(seqLen: Int): OnnxTensor? {
+        val shapesToTry = mutableListOf<LongArray>()
+        if (attentionMaskShape != null) {
+            val inferredShape = attentionMaskShape!!.clone()
+            for (i in inferredShape.indices) { if (inferredShape[i] <= 0L) inferredShape[i] = seqLen.toLong() }
+            shapesToTry.add(inferredShape)
+        }
+        shapesToTry.add(longArrayOf(1L, seqLen.toLong()))
+        shapesToTry.add(longArrayOf(1L, 1L, 1L, seqLen.toLong()))
+        for (shape in shapesToTry) {
+            try {
+                val elementCount = shape.fold(1L) { acc, l -> acc * l }.toInt()
+                val buf = LongBuffer.allocate(elementCount)
+                for (i in 0 until elementCount) buf.put(1L)
+                buf.rewind()
+                return OnnxTensor.createTensor(env, buf, shape)
+            } catch (_: Exception) {}
+        }
+        return null
     }
 
     fun start(coordinator: EngineCoordinator, onStatus: (String) -> Unit) { loadModel(); onStatus(if (isModelLoaded) "[推理] 神格已激活" else "[推理] 神格激活失败: ${lastError ?: "未知"}") }
