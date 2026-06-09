@@ -24,7 +24,7 @@ jobs:
           python3 << 'PYEOF'
           from huggingface_hub import hf_hub_download
           import os, sys
-          repo_id = "Qwen/Qwen2.5-0.5B-Instruct"
+          repo_id = "onnx-community/Qwen2.5-0.5B-Instruct"
           files = {
               "model.onnx": 500_000_000,
               "tokenizer.json": 1_000_000,
