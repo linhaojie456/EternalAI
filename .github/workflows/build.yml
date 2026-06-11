@@ -11,7 +11,7 @@ jobs:
     strategy:
       matrix:
         api-level: [26]
-        arch: [arm64-v8a]          # 保持不变
+        arch: [arm64-v8a]
 
     steps:
       - uses: actions/checkout@v4
@@ -67,7 +67,7 @@ jobs:
                   targetSdk = 34
                   versionCode = 1
                   versionName = "1.0"
-                  ndk { abiFilters += "arm64-v8a" }     // 只保留 arm64-v8a
+                  ndk { abiFilters += "arm64-v8a" }
               }
               buildTypes { release { isMinifyEnabled = false } }
               compileOptions {
@@ -118,8 +118,8 @@ jobs:
         uses: actions/cache@v4
         with:
           path: app/src/main/assets/model
-          key: deepseek-onnx-v10-${{ hashFiles('.github/workflows/build.yml') }}
-          restore-keys: deepseek-onnx-v10-
+          key: deepseek-onnx-v11-${{ hashFiles('.github/workflows/build.yml') }}
+          restore-keys: deepseek-onnx-v11-
 
       - name: Create model directory
         if: steps.cache-model.outputs.cache-hit != 'true'
@@ -253,20 +253,18 @@ jobs:
           print(f"离线推理验证通过: {success} 条对话")
           PYEOF
 
-      - name: Setup Android Emulator (arm64, longer timeout)
+      - name: Setup Android Emulator (arm64)
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 26
           arch: arm64-v8a
           target: google_apis
           force-avd-creation: false
-          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -netdelay none -netspeed full -no-snapshot-save -no-snapshot-load
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -netdelay none -netspeed full
           disable-animations: true
-          emulator-build: 11906837  # 可选，若需要稳定版本可指定，但一般留空
           ram-size: 4096M
           script: |
-            echo "模拟器启动中（arm64-v8a，预计需要较长时间）..."
-            # 增加启动等待循环，最多等 900 秒 (15分钟)
+            echo "模拟器启动中（arm64-v8a）..."
             for i in $(seq 1 90); do
               if adb shell getprop sys.boot_completed 2>/dev/null | grep -q "1"; then
                 echo "模拟器启动完成"
