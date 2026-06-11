@@ -1,4 +1,4 @@
-name: Build & Validate Eternal APK (Manual Emulator)
+name: Build & Validate Eternal APK (Fix SDK Path)
 on: [push, workflow_dispatch]
 
 env:
@@ -118,8 +118,8 @@ jobs:
         uses: actions/cache@v4
         with:
           path: app/src/main/assets/model
-          key: deepseek-onnx-v13-${{ hashFiles('.github/workflows/build.yml') }}
-          restore-keys: deepseek-onnx-v13-
+          key: deepseek-onnx-v14-${{ hashFiles('.github/workflows/build.yml') }}
+          restore-keys: deepseek-onnx-v14-
 
       - name: Create model directory
         if: steps.cache-model.outputs.cache-hit != 'true'
@@ -253,30 +253,52 @@ jobs:
           print(f"离线推理验证通过: {success} 条对话")
           PYEOF
 
-      # 手动启动模拟器
       - name: Setup and start Android Emulator manually
         timeout-minutes: 30
         run: |
-          echo "=== 安装系统映像 ==="
-          yes | sdkmanager "system-images;android-26;google_apis;arm64-v8a"
-          echo "=== 创建 AVD ==="
-          echo "no" | avdmanager create avd -n test_avd -k "system-images;android-26;google_apis;arm64-v8a" -f
-          echo "=== 启动模拟器（后台） ==="
-          export QEMU_AUDIO_DRV=none
+          # 查找 sdkmanager 和 avdmanager
+          if command -v sdkmanager &> /dev/null; then
+            SDKMANAGER="sdkmanager"
+          elif [ -f "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" ]; then
+            SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          elif [ -f "$ANDROID_HOME/tools/bin/sdkmanager" ]; then
+            SDKMANAGER="$ANDROID_HOME/tools/bin/sdkmanager"
+          else
+            echo "sdkmanager not found"; exit 1
+          fi
+
+          if command -v avdmanager &> /dev/null; then
+            AVDMANAGER="avdmanager"
+          elif [ -f "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" ]; then
+            AVDMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager"
+          elif [ -f "$ANDROID_HOME/tools/bin/avdmanager" ]; then
+            AVDMANAGER="$ANDROID_HOME/tools/bin/avdmanager"
+          else
+            echo "avdmanager not found"; exit 1
+          fi
+
+          echo "Using sdkmanager: $SDKMANAGER"
+          yes | $SDKMANAGER "system-images;android-26;google_apis;arm64-v8a"
+
+          echo "Creating AVD..."
+          echo "no" | $AVDMANAGER create avd -n test_avd -k "system-images;android-26;google_apis;arm64-v8a" -f
+
+          echo "Launching emulator..."
           $ANDROID_HOME/emulator/emulator -avd test_avd -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -netdelay none -netspeed full &
           EMULATOR_PID=$!
-          echo "模拟器 PID: $EMULATOR_PID"
-          echo "=== 等待模拟器启动完成（最多30分钟） ==="
+          echo "Emulator PID: $EMULATOR_PID"
+
+          echo "Waiting for emulator to boot..."
           for i in $(seq 1 180); do
             if adb shell getprop sys.boot_completed 2>/dev/null | grep -q "1"; then
-              echo "模拟器启动完成"
+              echo "Emulator boot completed"
               break
             fi
-            echo "等待中... ($i/180)"
+            echo "Waiting... ($i/180)"
             sleep 10
           done
           sleep 30
-          echo "=== 模拟器已就绪 ==="
+          echo "Emulator ready."
 
       - name: ADB test on emulator
         timeout-minutes: 10
@@ -284,29 +306,29 @@ jobs:
           adb wait-for-device
           adb uninstall com.eternal.ai || true
           adb install app/build/outputs/apk/debug/app-debug.apk
-          echo "授予权限..."
+          echo "Granting permissions..."
           adb shell pm grant com.eternal.ai android.permission.RECORD_AUDIO
           adb shell pm grant com.eternal.ai android.permission.CAMERA
           adb shell pm grant com.eternal.ai android.permission.WRITE_EXTERNAL_STORAGE
           adb shell pm grant com.eternal.ai android.permission.READ_EXTERNAL_STORAGE
-          echo "启动应用..."
+          echo "Starting app..."
           adb shell am start -n com.eternal.ai/.SplashActivity
           sleep 10
-          echo "模拟用户交互..."
+          echo "Simulating user interaction..."
           adb shell input tap 200 1800
           sleep 1
           adb shell input text "你好"
           sleep 1
           adb shell input tap 900 1800
           sleep 20
-          echo "检查日志..."
+          echo "Checking logs..."
           log=$(adb logcat -d | grep -i "永恒之神\|推理成功\|生成回复\|assistant")
           if [ -z "$log" ]; then
-              echo "警告：未检测到明确推理日志，检查应用是否存活..."
-              adb shell pidof com.eternal.ai || { echo "应用已退出"; exit 1; }
-              echo "应用仍在运行，模拟器验证视为通过。"
+              echo "WARNING: No inference log found, checking if app is still alive..."
+              adb shell pidof com.eternal.ai || { echo "App has exited"; exit 1; }
+              echo "App is still running, emulator test considered passed."
           else
-              echo "模拟器推理验证成功：检测到回复日志"
+              echo "Emulator test passed: found reply log"
               echo "$log"
           fi
 
