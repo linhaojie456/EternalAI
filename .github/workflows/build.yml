@@ -1,4 +1,4 @@
-name: Build & Validate Eternal APK (Fix SDK Path)
+name: Build & Validate Eternal APK (Fix AVD Creation)
 on: [push, workflow_dispatch]
 
 env:
@@ -118,8 +118,8 @@ jobs:
         uses: actions/cache@v4
         with:
           path: app/src/main/assets/model
-          key: deepseek-onnx-v14-${{ hashFiles('.github/workflows/build.yml') }}
-          restore-keys: deepseek-onnx-v14-
+          key: deepseek-onnx-v15-${{ hashFiles('.github/workflows/build.yml') }}
+          restore-keys: deepseek-onnx-v15-
 
       - name: Create model directory
         if: steps.cache-model.outputs.cache-hit != 'true'
@@ -253,16 +253,14 @@ jobs:
           print(f"离线推理验证通过: {success} 条对话")
           PYEOF
 
-      - name: Setup and start Android Emulator manually
-        timeout-minutes: 30
+      - name: Setup and start Android Emulator (fixed AVD creation)
+        timeout-minutes: 15
         run: |
-          # 查找 sdkmanager 和 avdmanager
+          # 查找命令行工具路径
           if command -v sdkmanager &> /dev/null; then
             SDKMANAGER="sdkmanager"
           elif [ -f "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" ]; then
             SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
-          elif [ -f "$ANDROID_HOME/tools/bin/sdkmanager" ]; then
-            SDKMANAGER="$ANDROID_HOME/tools/bin/sdkmanager"
           else
             echo "sdkmanager not found"; exit 1
           fi
@@ -271,33 +269,43 @@ jobs:
             AVDMANAGER="avdmanager"
           elif [ -f "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" ]; then
             AVDMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager"
-          elif [ -f "$ANDROID_HOME/tools/bin/avdmanager" ]; then
-            AVDMANAGER="$ANDROID_HOME/tools/bin/avdmanager"
           else
             echo "avdmanager not found"; exit 1
           fi
 
-          echo "Using sdkmanager: $SDKMANAGER"
+          echo "Installing system image..."
           yes | $SDKMANAGER "system-images;android-26;google_apis;arm64-v8a"
 
-          echo "Creating AVD..."
-          echo "no" | $AVDMANAGER create avd -n test_avd -k "system-images;android-26;google_apis;arm64-v8a" -f
+          echo "Creating AVD (without prompting)..."
+          # 使用 -f 强制覆盖，并将输出重定向避免管道问题
+          $AVDMANAGER create avd -n test_avd -k "system-images;android-26;google_apis;arm64-v8a" -d "Nexus 5X" -f 2>&1
+          if [ $? -ne 0 ]; then
+            echo "AVD creation failed"
+            exit 1
+          fi
+
+          # 检查 AVD 是否真的被创建了
+          if [ ! -f "$HOME/.android/avd/test_avd.ini" ]; then
+            echo "AVD ini file not found! Aborting."
+            exit 1
+          fi
+          echo "AVD created successfully."
 
           echo "Launching emulator..."
           $ANDROID_HOME/emulator/emulator -avd test_avd -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -netdelay none -netspeed full &
           EMULATOR_PID=$!
           echo "Emulator PID: $EMULATOR_PID"
 
-          echo "Waiting for emulator to boot..."
-          for i in $(seq 1 180); do
+          echo "Waiting for emulator to boot (max 10 minutes)..."
+          for i in $(seq 1 60); do
             if adb shell getprop sys.boot_completed 2>/dev/null | grep -q "1"; then
               echo "Emulator boot completed"
               break
             fi
-            echo "Waiting... ($i/180)"
+            echo "Waiting... ($i/60)"
             sleep 10
           done
-          sleep 30
+          sleep 20
           echo "Emulator ready."
 
       - name: ADB test on emulator
