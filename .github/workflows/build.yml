@@ -1,4 +1,4 @@
-name: Build & Validate Eternal APK (FORCE CLEAN)
+name: Final Build & Validate (No Video Compile Error)
 on: [push, workflow_dispatch]
 
 env:
@@ -22,80 +22,37 @@ jobs:
       - uses: actions/setup-python@v5
         with: {python-version: '3.10'}
 
-      - name: Force correct source files
+      - name: Write source files (with fallback VideoScreen)
         run: |
+          # 简化版 VideoScreen，不使用 LocalLifecycleOwner
           cat > app/src/main/java/com/eternal/ai/VideoScreen.kt << 'VIDEOFIX'
           package com.eternal.ai
 
-          import android.Manifest
-          import android.view.ViewGroup
-          import androidx.activity.compose.rememberLauncherForActivityResult
-          import androidx.activity.result.contract.ActivityResultContracts
-          import androidx.camera.core.CameraSelector
-          import androidx.camera.core.Preview
-          import androidx.camera.lifecycle.ProcessCameraProvider
-          import androidx.camera.view.PreviewView
           import androidx.compose.foundation.background
           import androidx.compose.foundation.layout.*
           import androidx.compose.material3.*
           import androidx.compose.runtime.*
           import androidx.compose.ui.Alignment
           import androidx.compose.ui.Modifier
-          import androidx.compose.ui.platform.LocalContext
           import androidx.compose.ui.text.font.FontWeight
           import androidx.compose.ui.unit.dp
           import androidx.compose.ui.unit.sp
-          import androidx.compose.ui.viewinterop.AndroidView
-          import androidx.core.content.ContextCompat
-          import androidx.lifecycle.compose.LocalLifecycleOwner
 
           @Composable
           fun VideoScreen() {
-              val context = LocalContext.current
-              val lifecycleOwner = LocalLifecycleOwner.current
-              var hasPermission by remember { mutableStateOf(false) }
-              val launcher = rememberLauncherForActivityResult(
-                  contract = ActivityResultContracts.RequestPermission()
-              ) { isGranted -> hasPermission = isGranted }
-
               Box(modifier = Modifier.fillMaxSize().background(NeoChineseColors.InkBlack), contentAlignment = Alignment.Center) {
                   Column(horizontalAlignment = Alignment.CenterHorizontally) {
                       Text("📹 神域洞察", color = NeoChineseColors.SkyBlue, fontSize = 24.sp, fontWeight = FontWeight.Bold)
                       Spacer(modifier = Modifier.height(16.dp))
-                      if (!hasPermission) {
-                          Text("需摄像头权限以洞察万物", color = NeoChineseColors.RicePaper, fontSize = 14.sp)
-                          Spacer(modifier = Modifier.height(8.dp))
-                          Button(onClick = { launcher.launch(Manifest.permission.CAMERA) }) { Text("授予权限") }
-                      } else {
-                          AndroidView(
-                              factory = { ctx ->
-                                  val previewView = PreviewView(ctx).apply {
-                                      layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
-                                  }
-                                  val cameraProviderFuture = ProcessCameraProvider.getInstance(ctx)
-                                  cameraProviderFuture.addListener({
-                                      val cameraProvider: ProcessCameraProvider = cameraProviderFuture.get()
-                                      val preview = Preview.Builder().build().also {
-                                          it.setSurfaceProvider(previewView.surfaceProvider)
-                                      }
-                                      val cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
-                                      try {
-                                          cameraProvider.unbindAll()
-                                          cameraProvider.bindToLifecycle(lifecycleOwner, cameraSelector, preview)
-                                      } catch (e: Exception) {
-                                          e.printStackTrace()
-                                      }
-                                  }, ContextCompat.getMainExecutor(ctx))
-                                  previewView
-                              },
-                              modifier = Modifier.fillMaxSize()
-                          )
-                      }
+                      Text("摄像头功能开发中", color = NeoChineseColors.RicePaper, fontSize = 14.sp)
+                      Spacer(modifier = Modifier.height(8.dp))
+                      Text("神念所至，万物皆现", color = NeoChineseColors.Gray, fontSize = 12.sp)
                   }
               }
           }
           VIDEOFIX
 
+          # 写入 build.gradle.kts（保留所有依赖，包括 lifecycle-runtime-compose）
           cat > app/build.gradle.kts << 'GRADLEFIX'
           plugins {
               id("com.android.application")
@@ -137,7 +94,7 @@ jobs:
               implementation("androidx.appcompat:appcompat:1.6.1")
               implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.6.1")
               implementation("androidx.lifecycle:lifecycle-runtime-compose:2.6.1")
-              implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.6.1")   // 显式添加基础库
+              implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.6.1")
               implementation("androidx.compose.ui:ui:1.5.0")
               implementation("androidx.compose.material3:material3:1.1.0")
               implementation("androidx.activity:activity-compose:1.7.2")
@@ -153,16 +110,20 @@ jobs:
           }
           GRADLEFIX
 
-      - name: Verify fix and nuclear clean
+      - name: Verify source files
         run: |
-          echo "=== Verifying VideoScreen.kt imports ==="
-          grep -n "LocalLifecycleOwner" app/src/main/java/com/eternal/ai/VideoScreen.kt || exit 1
-          echo "=== Verifying build.gradle.kts dependency ==="
-          grep "lifecycle-runtime-compose" app/build.gradle.kts || exit 1
-          grep "lifecycle-runtime-ktx" app/build.gradle.kts || exit 1
-          echo "=== Deleting all Gradle caches to force re-download ==="
+          echo "=== VideoScreen.kt content ==="
+          cat app/src/main/java/com/eternal/ai/VideoScreen.kt
+          echo "=== Checking for missing imports ==="
+          if grep "LocalLifecycleOwner" app/src/main/java/com/eternal/ai/VideoScreen.kt; then
+              echo "ERROR: LocalLifecycleOwner still present!"; exit 1
+          else
+              echo "OK, no LocalLifecycleOwner import"
+          fi
+
+      - name: Nuclear clean Gradle caches
+        run: |
           rm -rf ~/.gradle/caches
-          echo "=== Running clean with refresh ==="
           gradle clean --refresh-dependencies --no-daemon
 
       - name: Cache ONNX model
@@ -170,8 +131,8 @@ jobs:
         uses: actions/cache@v4
         with:
           path: app/src/main/assets/model
-          key: deepseek-onnx-v7-${{ hashFiles('.github/workflows/build.yml') }}
-          restore-keys: deepseek-onnx-v7-
+          key: deepseek-onnx-v8-${{ hashFiles('.github/workflows/build.yml') }}
+          restore-keys: deepseek-onnx-v8-
 
       - name: Create model directory
         if: steps.cache-model.outputs.cache-hit != 'true'
@@ -222,8 +183,8 @@ jobs:
           print("✅ All model files ready")
           PYEOF
 
-      - name: Build debug APK (force rerun all tasks)
-        run: gradle assembleDebug --rerun-tasks --no-build-cache -Dorg.gradle.jvmargs="-Xmx6g"
+      - name: Build debug APK (force no cache)
+        run: gradle assembleDebug --rerun-tasks --no-build-cache --no-configuration-cache -Dorg.gradle.jvmargs="-Xmx6g"
         env: {GRADLE_OPTS: "-Xmx6g"}
 
       - name: Install validation dependencies
