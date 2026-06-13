@@ -1,4 +1,4 @@
-name: Build & Validate Eternal APK (Fixed PATH)
+name: Build & Validate Eternal APK (Dynamic Paths)
 on: [push, workflow_dispatch]
 
 env:
@@ -118,8 +118,8 @@ jobs:
         uses: actions/cache@v4
         with:
           path: app/src/main/assets/model
-          key: deepseek-onnx-v17-${{ hashFiles('.github/workflows/build.yml') }}
-          restore-keys: deepseek-onnx-v17-
+          key: deepseek-onnx-v18-${{ hashFiles('.github/workflows/build.yml') }}
+          restore-keys: deepseek-onnx-v18-
 
       - name: Create model directory
         if: steps.cache-model.outputs.cache-hit != 'true'
@@ -253,25 +253,34 @@ jobs:
           print(f"离线推理验证通过: {success} 条对话")
           PYEOF
 
-      - name: Emulator and ADB test (unified)
+      - name: Emulator and ADB test (dynamic commands)
         timeout-minutes: 25
         run: |
-          # 将 Android SDK 的 platform-tools 和 emulator 目录加入 PATH
-          export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator:$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/cmdline-tools/latest:$ANDROID_HOME/tools/bin:$PATH"
-          # 检查 adb 是否可以访问
-          which adb || { echo "adb not found"; exit 1; }
-          which emulator || { echo "emulator not found"; exit 1; }
+          # 动态查找所有必需命令
+          ADB=$(find $ANDROID_HOME -name adb -type f | head -1)
+          EMULATOR=$(find $ANDROID_HOME -name emulator -type f | head -1)
+          SDKMANAGER=$(find $ANDROID_HOME -name sdkmanager -type f | head -1)
+          AVDMANAGER=$(find $ANDROID_HOME -name avdmanager -type f | head -1)
 
-          # 安装系统映像（如果尚未安装）
-          yes | sdkmanager "system-images;android-26;google_apis;arm64-v8a" 2>&1 | tail -3
+          if [ -z "$ADB" ] || [ -z "$EMULATOR" ] || [ -z "$SDKMANAGER" ] || [ -z "$AVDMANAGER" ]; then
+            echo "One or more Android tools not found"; exit 1
+          fi
+
+          echo "ADB: $ADB"
+          echo "EMULATOR: $EMULATOR"
+          echo "SDKMANAGER: $SDKMANAGER"
+          echo "AVDMANAGER: $AVDMANAGER"
+
+          # 安装系统映像
+          yes | $SDKMANAGER "system-images;android-26;google_apis;arm64-v8a" 2>&1 | tail -3
 
           # 清理旧 AVD
           rm -rf ~/.android/avd/test_avd.avd ~/.android/avd/test_avd.ini
 
-          # 创建 AVD，并手动回退（如果失败）
-          echo "no" | avdmanager create avd -n test_avd -k "system-images;android-26;google_apis;arm64-v8a" -d "pixel" -f 2>&1 || true
+          # 创建 AVD（手动回退）
+          echo "no" | $AVDMANAGER create avd -n test_avd -k "system-images;android-26;google_apis;arm64-v8a" -d "pixel" -f 2>&1 || true
           if [ ! -f "$HOME/.android/avd/test_avd.ini" ]; then
-            echo "Creating AVD ini manually..."
+            echo "Creating AVD manually..."
             AVD_PATH="$HOME/.android/avd/test_avd.avd"
             mkdir -p "$AVD_PATH"
             echo "avd.ini.encoding=UTF-8" > "$HOME/.android/avd/test_avd.ini"
@@ -289,25 +298,25 @@ jobs:
 
           # 启动模拟器
           echo "Launching emulator..."
-          emulator -avd test_avd -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -netdelay none -netspeed full &
+          $EMULATOR -avd test_avd -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -netdelay none -netspeed full &
           EMULATOR_PID=$!
           echo "Emulator PID: $EMULATOR_PID"
 
-          # 等待设备上线
+          # 等待设备
           echo "Waiting for emulator device..."
           for i in $(seq 1 60); do
-            if adb devices | grep -w "emulator-5554" | grep -q "device"; then
-              echo "Emulator device detected"
+            if $ADB devices | grep -w "emulator-5554" | grep -q "device"; then
+              echo "Device found"
               break
             fi
             echo "Waiting for device... ($i/60)"
             sleep 10
           done
 
-          # 等待系统启动完成
-          echo "Waiting for boot to complete..."
+          # 等待启动完成
+          echo "Waiting for boot..."
           for i in $(seq 1 30); do
-            if adb shell getprop sys.boot_completed 2>/dev/null | grep -q "1"; then
+            if $ADB shell getprop sys.boot_completed 2>/dev/null | grep -q "1"; then
               echo "Boot completed"
               break
             fi
@@ -316,29 +325,29 @@ jobs:
           done
           sleep 20
 
-          # 安装 APK 并测试
-          adb uninstall com.eternal.ai || true
-          adb install app/build/outputs/apk/debug/app-debug.apk
+          # 安装并测试 APK
+          $ADB uninstall com.eternal.ai || true
+          $ADB install app/build/outputs/apk/debug/app-debug.apk
           echo "Granting permissions..."
-          adb shell pm grant com.eternal.ai android.permission.RECORD_AUDIO
-          adb shell pm grant com.eternal.ai android.permission.CAMERA
-          adb shell pm grant com.eternal.ai android.permission.WRITE_EXTERNAL_STORAGE
-          adb shell pm grant com.eternal.ai android.permission.READ_EXTERNAL_STORAGE
+          $ADB shell pm grant com.eternal.ai android.permission.RECORD_AUDIO
+          $ADB shell pm grant com.eternal.ai android.permission.CAMERA
+          $ADB shell pm grant com.eternal.ai android.permission.WRITE_EXTERNAL_STORAGE
+          $ADB shell pm grant com.eternal.ai android.permission.READ_EXTERNAL_STORAGE
           echo "Starting app..."
-          adb shell am start -n com.eternal.ai/.SplashActivity
+          $ADB shell am start -n com.eternal.ai/.SplashActivity
           sleep 10
           echo "Simulating user interaction..."
-          adb shell input tap 200 1800
+          $ADB shell input tap 200 1800
           sleep 1
-          adb shell input text "你好"
+          $ADB shell input text "你好"
           sleep 1
-          adb shell input tap 900 1800
+          $ADB shell input tap 900 1800
           sleep 20
           echo "Checking logs..."
-          log=$(adb logcat -d | grep -i "永恒之神\|推理成功\|生成回复\|assistant")
+          log=$($ADB logcat -d | grep -i "永恒之神\|推理成功\|生成回复\|assistant")
           if [ -z "$log" ]; then
               echo "WARNING: No inference log found, checking if app is still alive..."
-              adb shell pidof com.eternal.ai || { echo "App has exited"; exit 1; }
+              $ADB shell pidof com.eternal.ai || { echo "App has exited"; exit 1; }
               echo "App is still running, emulator test considered passed."
           else
               echo "Emulator test passed: found reply log"
