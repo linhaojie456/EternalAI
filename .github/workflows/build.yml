@@ -1,4 +1,4 @@
-name: Build & Validate Eternal APK (Force AVD)
+name: Build & Validate Eternal APK (Fixed PATH)
 on: [push, workflow_dispatch]
 
 env:
@@ -118,8 +118,8 @@ jobs:
         uses: actions/cache@v4
         with:
           path: app/src/main/assets/model
-          key: deepseek-onnx-v16-${{ hashFiles('.github/workflows/build.yml') }}
-          restore-keys: deepseek-onnx-v16-
+          key: deepseek-onnx-v17-${{ hashFiles('.github/workflows/build.yml') }}
+          restore-keys: deepseek-onnx-v17-
 
       - name: Create model directory
         if: steps.cache-model.outputs.cache-hit != 'true'
@@ -253,85 +253,70 @@ jobs:
           print(f"离线推理验证通过: {success} 条对话")
           PYEOF
 
-      - name: Setup and start Android Emulator (robust AVD)
-        timeout-minutes: 15
+      - name: Emulator and ADB test (unified)
+        timeout-minutes: 25
         run: |
-          # 查找命令行工具路径
-          if command -v sdkmanager &> /dev/null; then
-            SDKMANAGER="sdkmanager"
-          elif [ -f "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" ]; then
-            SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
-          else
-            echo "sdkmanager not found"; exit 1
-          fi
+          # 将 Android SDK 的 platform-tools 和 emulator 目录加入 PATH
+          export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator:$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/cmdline-tools/latest:$ANDROID_HOME/tools/bin:$PATH"
+          # 检查 adb 是否可以访问
+          which adb || { echo "adb not found"; exit 1; }
+          which emulator || { echo "emulator not found"; exit 1; }
 
-          if command -v avdmanager &> /dev/null; then
-            AVDMANAGER="avdmanager"
-          elif [ -f "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" ]; then
-            AVDMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager"
-          else
-            echo "avdmanager not found"; exit 1
-          fi
+          # 安装系统映像（如果尚未安装）
+          yes | sdkmanager "system-images;android-26;google_apis;arm64-v8a" 2>&1 | tail -3
 
-          echo "Installing system image (if needed)..."
-          yes | $SDKMANAGER "system-images;android-26;google_apis;arm64-v8a" 2>&1 | tail -5
-
-          echo "Creating AVD..."
+          # 清理旧 AVD
           rm -rf ~/.android/avd/test_avd.avd ~/.android/avd/test_avd.ini
-          echo "no" | $AVDMANAGER create avd -n test_avd -k "system-images;android-26;google_apis;arm64-v8a" -d "pixel" -f 2>&1 || true
 
-          # 检查 ini 文件是否存在
+          # 创建 AVD，并手动回退（如果失败）
+          echo "no" | avdmanager create avd -n test_avd -k "system-images;android-26;google_apis;arm64-v8a" -d "pixel" -f 2>&1 || true
           if [ ! -f "$HOME/.android/avd/test_avd.ini" ]; then
-            echo "AVD ini not generated, creating manually..."
+            echo "Creating AVD ini manually..."
             AVD_PATH="$HOME/.android/avd/test_avd.avd"
             mkdir -p "$AVD_PATH"
-            cat > "$HOME/.android/avd/test_avd.ini" << EOF
-          avd.ini.encoding=UTF-8
-          path=$AVD_PATH
-          target=android-26
-          EOF
-            # 复制或创建必要的 config.ini（如果不存在）
-            if [ ! -f "$AVD_PATH/config.ini" ]; then
-              echo "Creating minimal config.ini..."
-              cat > "$AVD_PATH/config.ini" << EOF
-          avd.ini.encoding=UTF-8
-          abi.type=arm64-v8a
-          hw.cpu.arch=arm64
-          image.sysdir.1=system-images/android-26/google_apis/arm64-v8a/
-          disk.dataPartition.size=2048M
-          hw.lcd.density=240
-          hw.lcd.height=1280
-          hw.lcd.width=720
-          hw.ramSize=1024
-          showDeviceFrame=no
-          EOF
-            fi
-            echo "Manual AVD creation done."
-          else
-            echo "AVD ini found."
+            echo "avd.ini.encoding=UTF-8" > "$HOME/.android/avd/test_avd.ini"
+            echo "path=$AVD_PATH" >> "$HOME/.android/avd/test_avd.ini"
+            echo "target=android-26" >> "$HOME/.android/avd/test_avd.ini"
+            echo "abi.type=arm64-v8a" > "$AVD_PATH/config.ini"
+            echo "image.sysdir.1=system-images/android-26/google_apis/arm64-v8a/" >> "$AVD_PATH/config.ini"
+            echo "disk.dataPartition.size=2048M" >> "$AVD_PATH/config.ini"
+            echo "hw.lcd.density=240" >> "$AVD_PATH/config.ini"
+            echo "hw.lcd.height=1280" >> "$AVD_PATH/config.ini"
+            echo "hw.lcd.width=720" >> "$AVD_PATH/config.ini"
+            echo "hw.ramSize=1536" >> "$AVD_PATH/config.ini"
+            echo "showDeviceFrame=no" >> "$AVD_PATH/config.ini"
           fi
 
+          # 启动模拟器
           echo "Launching emulator..."
-          $ANDROID_HOME/emulator/emulator -avd test_avd -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -netdelay none -netspeed full &
+          emulator -avd test_avd -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -netdelay none -netspeed full &
           EMULATOR_PID=$!
           echo "Emulator PID: $EMULATOR_PID"
 
-          echo "Waiting for emulator to boot (max 10 minutes)..."
+          # 等待设备上线
+          echo "Waiting for emulator device..."
           for i in $(seq 1 60); do
-            if adb shell getprop sys.boot_completed 2>/dev/null | grep -q "1"; then
-              echo "Emulator boot completed"
+            if adb devices | grep -w "emulator-5554" | grep -q "device"; then
+              echo "Emulator device detected"
               break
             fi
-            echo "Waiting... ($i/60)"
+            echo "Waiting for device... ($i/60)"
+            sleep 10
+          done
+
+          # 等待系统启动完成
+          echo "Waiting for boot to complete..."
+          for i in $(seq 1 30); do
+            if adb shell getprop sys.boot_completed 2>/dev/null | grep -q "1"; then
+              echo "Boot completed"
+              break
+            fi
+            echo "Waiting for boot... ($i/30)"
             sleep 10
           done
           sleep 20
-          echo "Emulator ready."
 
-      - name: ADB test on emulator
-        timeout-minutes: 10
-        run: |
-          adb wait-for-device
+          # 安装 APK 并测试
           adb uninstall com.eternal.ai || true
           adb install app/build/outputs/apk/debug/app-debug.apk
           echo "Granting permissions..."
