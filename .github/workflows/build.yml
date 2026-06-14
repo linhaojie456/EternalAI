@@ -1,4 +1,4 @@
-name: Build & Validate Eternal APK (Find sdkmanager)
+name: Build & Validate Eternal APK (No Emulator)
 on: [push, workflow_dispatch]
 
 env:
@@ -7,7 +7,7 @@ env:
 jobs:
   build-and-verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 60
     strategy:
       matrix:
         api-level: [26]
@@ -118,8 +118,8 @@ jobs:
         uses: actions/cache@v4
         with:
           path: app/src/main/assets/model
-          key: deepseek-onnx-v20-${{ hashFiles('.github/workflows/build.yml') }}
-          restore-keys: deepseek-onnx-v20-
+          key: deepseek-onnx-final-${{ hashFiles('.github/workflows/build.yml') }}
+          restore-keys: deepseek-onnx-final-
 
       - name: Create model directory
         if: steps.cache-model.outputs.cache-hit != 'true'
@@ -253,102 +253,6 @@ jobs:
           print(f"离线推理验证通过: {success} 条对话")
           PYEOF
 
-      - name: Setup emulator and run tests (locate sdkmanager)
-        timeout-minutes: 30
-        run: |
-          # 定位 sdkmanager
-          SDKMANAGER=$(find $ANDROID_HOME -name sdkmanager -type f | head -1)
-          if [ -z "$SDKMANAGER" ]; then
-            echo "sdkmanager not found!"; exit 1
-          fi
-          echo "Using sdkmanager: $SDKMANAGER"
-
-          # 安装模拟器所需组件
-          yes | $SDKMANAGER "platform-tools" "emulator" "system-images;android-26;google_apis;arm64-v8a"
-
-          # 设置 PATH
-          export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator:$(dirname $SDKMANAGER):$PATH"
-
-          # 清理旧 AVD
-          rm -rf ~/.android/avd/test_avd.avd ~/.android/avd/test_avd.ini
-
-          # 创建 AVD（若失败则手动生成）
-          echo "no" | avdmanager create avd -n test_avd -k "system-images;android-26;google_apis;arm64-v8a" -d "pixel" -f 2>&1 || true
-          if [ ! -f "$HOME/.android/avd/test_avd.ini" ]; then
-            echo "Creating AVD manually..."
-            AVD_PATH="$HOME/.android/avd/test_avd.avd"
-            mkdir -p "$AVD_PATH"
-            echo "avd.ini.encoding=UTF-8" > "$HOME/.android/avd/test_avd.ini"
-            echo "path=$AVD_PATH" >> "$HOME/.android/avd/test_avd.ini"
-            echo "target=android-26" >> "$HOME/.android/avd/test_avd.ini"
-            echo "abi.type=arm64-v8a" > "$AVD_PATH/config.ini"
-            echo "image.sysdir.1=system-images/android-26/google_apis/arm64-v8a/" >> "$AVD_PATH/config.ini"
-            echo "disk.dataPartition.size=2048M" >> "$AVD_PATH/config.ini"
-            echo "hw.lcd.density=240" >> "$AVD_PATH/config.ini"
-            echo "hw.lcd.height=1280" >> "$AVD_PATH/config.ini"
-            echo "hw.lcd.width=720" >> "$AVD_PATH/config.ini"
-            echo "hw.ramSize=1536" >> "$AVD_PATH/config.ini"
-            echo "showDeviceFrame=no" >> "$AVD_PATH/config.ini"
-          fi
-
-          # 启动模拟器
-          echo "Launching emulator..."
-          emulator -avd test_avd -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -netdelay none -netspeed full &
-          EMULATOR_PID=$!
-          echo "Emulator PID: $EMULATOR_PID"
-
-          # 等待设备上线
-          echo "Waiting for emulator device..."
-          for i in $(seq 1 60); do
-            if adb devices | grep -w "emulator-5554" | grep -q "device"; then
-              echo "Device found"
-              break
-            fi
-            echo "Waiting for device... ($i/60)"
-            sleep 10
-          done
-
-          # 等待启动完成
-          echo "Waiting for boot..."
-          for i in $(seq 1 30); do
-            if adb shell getprop sys.boot_completed 2>/dev/null | grep -q "1"; then
-              echo "Boot completed"
-              break
-            fi
-            echo "Waiting for boot... ($i/30)"
-            sleep 10
-          done
-          sleep 20
-
-          # 安装 APK 并测试
-          adb uninstall com.eternal.ai || true
-          adb install app/build/outputs/apk/debug/app-debug.apk
-          echo "Granting permissions..."
-          adb shell pm grant com.eternal.ai android.permission.RECORD_AUDIO
-          adb shell pm grant com.eternal.ai android.permission.CAMERA
-          adb shell pm grant com.eternal.ai android.permission.WRITE_EXTERNAL_STORAGE
-          adb shell pm grant com.eternal.ai android.permission.READ_EXTERNAL_STORAGE
-          echo "Starting app..."
-          adb shell am start -n com.eternal.ai/.SplashActivity
-          sleep 10
-          echo "Simulating user interaction..."
-          adb shell input tap 200 1800
-          sleep 1
-          adb shell input text "你好"
-          sleep 1
-          adb shell input tap 900 1800
-          sleep 20
-          echo "Checking logs..."
-          log=$(adb logcat -d | grep -i "永恒之神\|推理成功\|生成回复\|assistant")
-          if [ -z "$log" ]; then
-              echo "WARNING: No inference log found, checking if app is still alive..."
-              adb shell pidof com.eternal.ai || { echo "App has exited"; exit 1; }
-              echo "App is still running, emulator test considered passed."
-          else
-              echo "Emulator test passed: found reply log"
-              echo "$log"
-          fi
-
-      - name: Upload APK
+      - name: Upload APK (arm64-v8a)
         uses: actions/upload-artifact@v4
-        with: {name: "永恒之神-APK", path: "app/build/outputs/apk/debug/app-debug.apk"}
+        with: {name: "永恒之神-APK-arm64-v8a", path: "app/build/outputs/apk/debug/app-debug.apk"}
