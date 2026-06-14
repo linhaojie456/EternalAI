@@ -1,4 +1,4 @@
-name: Build & Validate Eternal APK (Install Emulator)
+name: Build & Validate Eternal APK (Find sdkmanager)
 on: [push, workflow_dispatch]
 
 env:
@@ -118,8 +118,8 @@ jobs:
         uses: actions/cache@v4
         with:
           path: app/src/main/assets/model
-          key: deepseek-onnx-v19-${{ hashFiles('.github/workflows/build.yml') }}
-          restore-keys: deepseek-onnx-v19-
+          key: deepseek-onnx-v20-${{ hashFiles('.github/workflows/build.yml') }}
+          restore-keys: deepseek-onnx-v20-
 
       - name: Create model directory
         if: steps.cache-model.outputs.cache-hit != 'true'
@@ -253,19 +253,26 @@ jobs:
           print(f"离线推理验证通过: {success} 条对话")
           PYEOF
 
-      - name: Setup emulator and run tests
+      - name: Setup emulator and run tests (locate sdkmanager)
         timeout-minutes: 30
         run: |
-          # 安装缺失的模拟器工具和平台工具
-          yes | sdkmanager "platform-tools" "emulator" "system-images;android-26;google_apis;arm64-v8a"
+          # 定位 sdkmanager
+          SDKMANAGER=$(find $ANDROID_HOME -name sdkmanager -type f | head -1)
+          if [ -z "$SDKMANAGER" ]; then
+            echo "sdkmanager not found!"; exit 1
+          fi
+          echo "Using sdkmanager: $SDKMANAGER"
 
-          # 设置路径
-          export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator:$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
+          # 安装模拟器所需组件
+          yes | $SDKMANAGER "platform-tools" "emulator" "system-images;android-26;google_apis;arm64-v8a"
+
+          # 设置 PATH
+          export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator:$(dirname $SDKMANAGER):$PATH"
 
           # 清理旧 AVD
           rm -rf ~/.android/avd/test_avd.avd ~/.android/avd/test_avd.ini
 
-          # 创建 AVD
+          # 创建 AVD（若失败则手动生成）
           echo "no" | avdmanager create avd -n test_avd -k "system-images;android-26;google_apis;arm64-v8a" -d "pixel" -f 2>&1 || true
           if [ ! -f "$HOME/.android/avd/test_avd.ini" ]; then
             echo "Creating AVD manually..."
