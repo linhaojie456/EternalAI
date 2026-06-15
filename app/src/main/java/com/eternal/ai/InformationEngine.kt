@@ -33,8 +33,7 @@ class InformationEngine {
 
     fun isEnabled(): Boolean = enabled
 
-    fun search(query: String, callback: (String) -> Unit) { deepSearch(query, callback) }
-    fun deepSearch(query: String, callback: (String) -> Unit) {
+    fun search(query: String, callback: (String) -> Unit) {
         if (!enabled || !connected) { callback("网络未连接"); return }
         scope.launch {
             try {
@@ -56,9 +55,8 @@ class InformationEngine {
                 val conn = url.openConnection() as HttpURLConnection
                 conn.connectTimeout = 5000; conn.readTimeout = 5000
                 if (conn.responseCode == 200) {
-                    val ip = conn.inputStream.bufferedReader().readText()
                     connected = true
-                    onStatus?.invoke("已连接 IP: $ip")
+                    onStatus?.invoke("已连接")
                 } else { connected = false; onStatus?.invoke("离线") }
                 conn.disconnect()
             } catch (e: Exception) { connected = false; onStatus?.invoke("离线") }

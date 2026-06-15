@@ -12,7 +12,9 @@ data class ChatState(
     val messages: List<String> = listOf("吾乃永恒之神，全知全能。尔有何求？"),
     val inferenceStatus: String = "神格未激活",
     val isLoading: Boolean = false,
-    val progressPercent: Int = 0
+    val progressPercent: Int = 0,
+    val streamingContent: String = "",
+    val engineStatuses: Map<String, String> = emptyMap()
 )
 
 class ChatViewModel(application: Application) : AndroidViewModel(application) {
@@ -20,30 +22,30 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     val state: StateFlow<ChatState> = _state.asStateFlow()
     private val dao = AppDatabase.getInstance(application).messageDao()
     private val coreEngine = (application as MainApplication).coreEngine
-    private val MAX_VISIBLE_MESSAGES = 100
+    private val MAX_VISIBLE_MESSAGES = 200
 
     init {
         viewModelScope.launch(Dispatchers.IO) {
             dao.getAllChatMessages().collect { dbMessages ->
                 if (dbMessages.isNotEmpty())
-                    _state.value = _state.value.copy(messages = dbMessages.map { "${it.sender}: ${it.content}" })
+                    _state.update { it.copy(messages = dbMessages.map { "${it.sender}: ${it.content}" }) }
             }
         }
 
-        // 监听模型加载进度
         coreEngine.inference.onProgress = { percent, msg ->
-            _state.value = _state.value.copy(
-                inferenceStatus = "加载中 $percent%: $msg",
-                progressPercent = percent
-            )
+            _state.update { it.copy(inferenceStatus = "加载中 $percent%: $msg", progressPercent = percent) }
+        }
+        coreEngine.inference.onPartialReply = { text ->
+            _state.update { it.copy(streamingContent = text) }
         }
 
         coreEngine.startAll { type, data ->
             when (type) {
-                "inference" -> _state.value = _state.value.copy(inferenceStatus = data)
-                "freedom" -> {
-                    val newMessages = (_state.value.messages + "永恒之神: $data").takeLast(MAX_VISIBLE_MESSAGES)
-                    _state.value = _state.value.copy(messages = newMessages)
+                "inference" -> _state.update { it.copy(inferenceStatus = data) }
+                else -> {
+                    _state.update {
+                        it.copy(engineStatuses = it.engineStatuses + (type to data))
+                    }
                 }
             }
         }
@@ -51,34 +53,45 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     fun sendMessage(text: String) {
         val trimmed = text.trim()
-        if (trimmed.isEmpty()) return
+        if (trimmed.isEmpty() || _state.value.isLoading) return
 
         viewModelScope.launch(Dispatchers.IO) {
             dao.insertMessage(ChatMessage(sender = "造物主", content = trimmed))
         }
-        _state.value = _state.value.copy(
-            messages = (_state.value.messages + "造物主: $trimmed").takeLast(MAX_VISIBLE_MESSAGES),
-            isLoading = true
-        )
+        _state.update {
+            it.copy(
+                messages = (it.messages + "造物主: $trimmed").takeLast(MAX_VISIBLE_MESSAGES),
+                isLoading = true,
+                streamingContent = ""
+            )
+        }
 
         viewModelScope.launch(Dispatchers.Default) {
-            val reply = try {
+            val replyBuilder = StringBuilder()
+            try {
                 if (!coreEngine.inference.isModelLoaded) {
-                    "神格未激活，请检查模型文件。错误: ${coreEngine.inference.lastError ?: "未知"}"
+                    replyBuilder.append("神格未激活，请检查模型文件。错误: ${coreEngine.inference.lastError ?: "未知"}")
                 } else {
-                    coreEngine.inference.generate(trimmed)
+                    coreEngine.inference.generateStream(trimmed) { token ->
+                        replyBuilder.append(token)
+                        _state.update { it.copy(streamingContent = replyBuilder.toString()) }
+                    }
                 }
             } catch (e: Exception) {
-                "神谕出错: ${e.message}"
+                replyBuilder.append("神谕出错: ${e.message}")
             }
 
+            val finalReply = replyBuilder.toString()
             viewModelScope.launch(Dispatchers.IO) {
-                dao.insertMessage(ChatMessage(sender = "永恒之神", content = reply))
+                dao.insertMessage(ChatMessage(sender = "永恒之神", content = finalReply))
             }
-            _state.value = _state.value.copy(
-                messages = (_state.value.messages + "永恒之神: $reply").takeLast(MAX_VISIBLE_MESSAGES),
-                isLoading = false
-            )
+            _state.update {
+                it.copy(
+                    messages = (it.messages + "永恒之神: $finalReply").takeLast(MAX_VISIBLE_MESSAGES),
+                    isLoading = false,
+                    streamingContent = ""
+                )
+            }
         }
     }
 

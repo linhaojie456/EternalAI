@@ -25,9 +25,8 @@ class InferenceEngine(private val context: Context) {
 
     var isModelLoaded = false
         private set
-
-    // 加载进度回调 (0~100)
     var onProgress: ((Int, String) -> Unit)? = null
+    var onPartialReply: ((String) -> Unit)? = null
 
     fun loadModel(): Boolean {
         loadStatus = "检查模型文件..."
@@ -47,10 +46,11 @@ class InferenceEngine(private val context: Context) {
 
             onProgress?.invoke(30, "创建 ONNX 会话")
             val options = OrtSession.SessionOptions()
+            options.setCPUArenaAllocator(true)
+            options.setExecutionMode(OrtSession.ExecutionMode.PARALLEL)
             session = env.createSession(modelFile.absolutePath, options)
             writeLog("ONNX 会话创建成功")
 
-            // 解析输入信息
             for (input in session!!.inputInfo.values) {
                 if (input.name == "attention_mask") {
                     val tensorInfo = input.info as? TensorInfo
@@ -84,12 +84,6 @@ class InferenceEngine(private val context: Context) {
                 return false
             }
 
-            val testIds = tokenizer!!.encode("测试")
-            if (testIds.isEmpty()) {
-                initError("分词器测试失败")
-                return false
-            }
-
             isModelLoaded = true
             loadStatus = "神格已激活 (${modelSize / (1024*1024)}MB, 层:$numLayers)"
             onProgress?.invoke(100, loadStatus)
@@ -115,7 +109,6 @@ class InferenceEngine(private val context: Context) {
         } catch (_: Exception) {}
     }
 
-    // 以下推理函数保持原有逻辑，仅微调
     private fun createEmptyPastKeyValues(): Map<String, OnnxTensor> {
         val shape = longArrayOf(1L, numKVHeads.toLong(), 0L, headDim.toLong())
         val map = mutableMapOf<String, OnnxTensor>()
@@ -138,24 +131,36 @@ class InferenceEngine(private val context: Context) {
         return result
     }
 
-    private fun sampleToken(logits: FloatArray, temperature: Float = 0.8f, topK: Int = 50): Long {
-        val scaled = FloatArray(logits.size) { logits[it] / temperature }
+    private fun sampleToken(logits: FloatArray, generatedTokens: List<Long>, temperature: Float = 0.8f, topK: Int = 50, topP: Float = 0.9f, repetitionPenalty: Float = 1.1f): Long {
+        val penalized = logits.clone()
+        for (id in generatedTokens) {
+            val idx = id.toInt()
+            if (idx < penalized.size) {
+                penalized[idx] = if (penalized[idx] > 0) penalized[idx] / repetitionPenalty else penalized[idx] * repetitionPenalty
+            }
+        }
+        val scaled = FloatArray(penalized.size) { penalized[it] / temperature }
         val maxLogit = scaled.maxOrNull()!!
         var expSum = 0.0
         for (v in scaled) expSum += exp((v - maxLogit).toDouble())
         val probs = scaled.map { (exp((it - maxLogit).toDouble()) / expSum).toFloat() }
         val indexed = probs.withIndex().sortedByDescending { (_, v) -> v }.take(topK)
-        val filteredValues = indexed.map { (_, v) -> v }
-        val sum = filteredValues.sum()
-        val normalized = filteredValues.map { it / sum }
-        val indices = indexed.map { (i, _) -> i }
-        val r = Random.nextFloat()
         var cumulative = 0f
+        val nucleus = mutableListOf<IndexedValue<Float>>()
+        for (iv in indexed) {
+            nucleus.add(iv)
+            cumulative += iv.value
+            if (cumulative >= topP) break
+        }
+        val sum = nucleus.sumOf { it.value.toDouble() }.toFloat()
+        val normalized = nucleus.map { it.value / sum }
+        val r = Random.nextFloat()
+        cumulative = 0f
         for (i in normalized.indices) {
             cumulative += normalized[i]
-            if (r <= cumulative) return indices[i].toLong()
+            if (r <= cumulative) return nucleus[i].index.toLong()
         }
-        return indices.last().toLong()
+        return nucleus.last().index.toLong()
     }
 
     private fun createAttentionMaskTensor(seqLen: Int): OnnxTensor {
@@ -172,15 +177,22 @@ class InferenceEngine(private val context: Context) {
     }
 
     fun generate(prompt: String, maxTokens: Int = 200): String {
+        val fullReply = StringBuilder()
+        generateStream(prompt, maxTokens) { partial -> fullReply.append(partial) }
+        return fullReply.toString()
+    }
+
+    fun generateStream(prompt: String, maxTokens: Int = 200, onToken: (String) -> Unit) {
         if (!isModelLoaded) {
-            return "神格初始化失败: ${lastError ?: "未知错误"}"
+            onToken("神格初始化失败: ${lastError ?: "未知错误"}")
+            return
         }
-        val tok = tokenizer ?: return "分词器不可用"
+        val tok = tokenizer ?: run { onToken("分词器不可用"); return }
         val eosId = tok.eosTokenId
         try {
             val formattedPrompt = "<|im_start|>system\n汝是永恒之神。<|im_end|>\n<|im_start|>user\n$prompt<|im_end|>\n<|im_start|>assistant\n"
             val allIds = tok.encode(formattedPrompt).toMutableList()
-            if (allIds.isEmpty()) return "汝之言，吾未能解。"
+            if (allIds.isEmpty()) { onToken("汝之言，吾未能解。"); return }
 
             val outputNames: List<String> = session!!.outputNames.toList()
             var logitsIndex = -1
@@ -203,29 +215,21 @@ class InferenceEngine(private val context: Context) {
                 inputs.putAll(pastKeyValues)
 
                 val result = sess.run(inputs)
-                val logitsValue: OnnxValue = result.get(logitsIndex)
-                val logitsTensor = logitsValue as? OnnxTensor
-                if (logitsTensor == null) {
-                    writeLog("logits 张量为空")
-                    return "神谕暂不可用。"
-                }
-                val logits = extractLogits(logitsTensor)
-                if (logits == null) {
-                    writeLog("logits 提取失败")
-                    return "神谕暂不可用。"
-                }
+                val logitsTensor = (result.get(logitsIndex) as? OnnxTensor) ?: break
+                val logits = extractLogits(logitsTensor) ?: break
                 val nextTokenLogits = logits[logits.size - 1]
-                val nextToken = sampleToken(nextTokenLogits)
+                val nextToken = sampleToken(nextTokenLogits, generated)
 
                 if (generated.isNotEmpty() && nextToken == eosId) break
                 generated.add(nextToken)
+                val tokenText = tok.decode(longArrayOf(nextToken))
+                if (tokenText.isNotEmpty()) onToken(tokenText)
 
                 val newPast = mutableMapOf<String, OnnxTensor>()
                 for (idx in outputNames.indices) {
                     val name = outputNames[idx]
                     if (name.startsWith("present.")) {
-                        val value = result.get(idx)
-                        val tensor = value as? OnnxTensor ?: continue
+                        val tensor = result.get(idx) as? OnnxTensor ?: continue
                         val parts = name.removePrefix("present.").split(".")
                         if (parts.size >= 2) {
                             val layerIndex = parts[0].toIntOrNull() ?: continue
@@ -240,35 +244,18 @@ class InferenceEngine(private val context: Context) {
                 positionIds = mutableListOf((allIds.size + generated.size - 1).toLong())
                 maskTensor = createAttentionMaskTensor(1)
             }
-
-            if (generated.isEmpty()) return "吾思虑片刻，未得神谕。"
-            val fullIds = (allIds + generated).toLongArray()
-            val rawOutput = tok.decode(fullIds)
-            val marker = "<|im_start|>assistant\n"
-            val idx = rawOutput.lastIndexOf(marker)
-            val reply = if (idx >= 0) rawOutput.substring(idx + marker.length).trim() else rawOutput.removePrefix(formattedPrompt).trim()
-            if (reply.isNotEmpty()) {
-                writeLog("推理成功，回复长度: ${reply.length}")
-                return reply
-            } else {
-                writeLog("解码后回复为空")
-                return "吾思虑片刻，未得神谕。"
-            }
         } catch (e: Exception) {
             writeLog("推理异常: ${e.message}")
-            return "神格波动，神谕暂不可达。"
+            onToken("神格波动，神谕暂不可达。")
         }
     }
 
     fun start(coordinator: EngineCoordinator, onStatus: (String) -> Unit) {
-        // 异步加载模型，通过 onProgress 反馈进度
         Thread {
             loadModel()
             onStatus(if (isModelLoaded) "[推理] 神格已激活" else "[推理] 神格激活失败: ${lastError ?: "未知"}")
         }.start()
     }
 
-    fun stop() {
-        session?.close()
-    }
+    fun stop() { session?.close() }
 }
