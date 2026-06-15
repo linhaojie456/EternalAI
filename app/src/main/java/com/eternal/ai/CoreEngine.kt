@@ -23,26 +23,25 @@ class CoreEngine(private val context: Context) : EngineCoordinator {
     fun startAll(onUpdate: (String, String) -> Unit) {
         msgCb = onUpdate
         selfRef.setCoordinator(this)
-        // 启动核心引擎
         inference.start(this) { onUpdate("inference", it) }
         spacetime.start(this) { onUpdate("spacetime", it) }
         information.start(this) { onUpdate("info", it) }
-        // 其他引擎延迟启动以减少初始负载
-        scope.launch {
-            delay(5000)
-            evolution.start(this@CoreEngine) { onUpdate("evolution", it) }
-            freedom.start(context, this@CoreEngine) { onUpdate("freedom", it) }
-            emotion.start(this@CoreEngine) { onUpdate("emotion", it) }
-            soul.start(this@CoreEngine) { onUpdate("soul", it) }
-            selfRef.start(this@CoreEngine) { onUpdate("selfref", it) }
-            causality.start(this@CoreEngine) { onUpdate("causality", it) }
-            management.start(context, this@CoreEngine) { onUpdate("management", it) }
-            engineering.start(this@CoreEngine) { onUpdate("engineering", it) }
-            politics.start(this@CoreEngine) { onUpdate("politics", it) }
-            society.start(this@CoreEngine) { onUpdate("society", it) }
-            reality.start(this@CoreEngine) { onUpdate("reality", it) }
-            cosmos.start(this@CoreEngine) { onUpdate("cosmos", it) }
-        }
+        // 其他引擎延迟启动
+        Thread {
+            Thread.sleep(5000)
+            evolution.start(this) { onUpdate("evolution", it) }
+            freedom.start(context, this) { onUpdate("freedom", it) }
+            emotion.start(this) { onUpdate("emotion", it) }
+            soul.start(this) { onUpdate("soul", it) }
+            selfRef.start(this) { onUpdate("selfref", it) }
+            causality.start(this) { onUpdate("causality", it) }
+            management.start(context, this) { onUpdate("management", it) }
+            engineering.start(this) { onUpdate("engineering", it) }
+            politics.start(this) { onUpdate("politics", it) }
+            society.start(this) { onUpdate("society", it) }
+            reality.start(this) { onUpdate("reality", it) }
+            cosmos.start(this) { onUpdate("cosmos", it) }
+        }.start()
     }
 
     fun stopAll() {

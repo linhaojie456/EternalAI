@@ -5,7 +5,7 @@ class EvolutionEngine {
     private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
     private var gen = 0
     fun start(coordinator: EngineCoordinator, onStatus: (String) -> Unit) {
-        scope.launch { while (isActive) { gen++; onStatus("[进化] 第${gen}代"); delay(30000) } }
+        scope.launch { while (isActive) { gen++; onStatus("[进化] 第${gen}代 自指强度:${"%.2f".format(Math.random())}"); delay(30000) } }
     }
     fun stop() { scope.cancel() }
 }

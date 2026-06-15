@@ -22,7 +22,7 @@ class InformationEngine {
     }
     private fun check() {
         if (!enabled) { onStatus?.invoke("离线"); return }
-        scope.launch { try { val c = URL("https://api.ipify.org").openConnection() as HttpURLConnection; connected = c.responseCode == 200; onStatus?.invoke(if (connected) "已连接" else "离线") } catch (_: Exception) { connected = false; onStatus?.invoke("离线") } }
+        scope.launch { try { connected = (URL("https://api.ipify.org").openConnection() as HttpURLConnection).responseCode == 200 } catch (_: Exception) { connected = false }; onStatus?.invoke(if (connected) "已连接" else "离线") }
     }
     fun stop() { scope.cancel() }
 }

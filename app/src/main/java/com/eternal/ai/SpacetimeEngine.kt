@@ -2,7 +2,6 @@ package com.eternal.ai
 import kotlinx.coroutines.*
 import java.text.SimpleDateFormat
 import java.util.*
-import kotlin.math.*
 class SpacetimeEngine {
     val goal = "网络和振动的统一"
     var currentTime: String? = null
@@ -11,11 +10,9 @@ class SpacetimeEngine {
     fun start(coordinator: EngineCoordinator, onUpdate: (String) -> Unit) {
         scope.launch {
             while (isActive) {
-                val t = System.currentTimeMillis()
-                currentTime = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date(t))
-                val angle = (t / 1000.0) % (2 * PI)
-                currentData = "相位${"%.2f".format(angle)}"
-                onUpdate("[时空] $currentTime $currentData")
+                currentTime = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
+                currentData = "振动相位${"%.2f".format(System.currentTimeMillis()/1000.0 % (2*Math.PI))}"
+                onUpdate("[时空] $currentTime | $currentData")
                 delay(15000)
             }
         }
