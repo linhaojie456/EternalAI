@@ -1,18 +1,13 @@
-name: Build & Validate Eternal APK (No Emulator)
+name: Optimized Build with Emulator Test
 on: [push, workflow_dispatch]
 
 env:
   ANDROID_HOME: /usr/local/lib/android/sdk
 
 jobs:
-  build-and-verify:
+  test-emulator:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
-    strategy:
-      matrix:
-        api-level: [26]
-        arch: [arm64-v8a]
-
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -22,11 +17,10 @@ jobs:
       - uses: actions/setup-python@v5
         with: {python-version: '3.10'}
 
-      - name: Write source files (no LocalLifecycleOwner)
+      - name: Prepare x86_64 build (VideoScreen without LocalLifecycleOwner)
         run: |
           cat > app/src/main/java/com/eternal/ai/VideoScreen.kt << 'VIDEOFIX'
           package com.eternal.ai
-
           import androidx.compose.foundation.background
           import androidx.compose.foundation.layout.*
           import androidx.compose.material3.*
@@ -51,208 +45,136 @@ jobs:
           }
           VIDEOFIX
 
-          cat > app/build.gradle.kts << 'GRADLEFIX'
-          plugins {
-              id("com.android.application")
-              id("org.jetbrains.kotlin.android")
-              id("com.chaquo.python")
-              id("kotlin-kapt")
-          }
-          android {
-              namespace = "com.eternal.ai"
-              compileSdk = 34
-              defaultConfig {
-                  applicationId = "com.eternal.ai"
-                  minSdk = 26
-                  targetSdk = 34
-                  versionCode = 1
-                  versionName = "1.0"
-                  ndk { abiFilters += "arm64-v8a" }
-              }
-              buildTypes { release { isMinifyEnabled = false } }
-              compileOptions {
-                  sourceCompatibility = JavaVersion.VERSION_17
-                  targetCompatibility = JavaVersion.VERSION_17
-              }
-              kotlinOptions { jvmTarget = "17" }
-              buildFeatures { compose = true }
-              composeOptions { kotlinCompilerExtensionVersion = "1.5.8" }
-              aaptOptions { noCompress += "onnx" }
-          }
-          chaquopy {
-              defaultConfig {
-                  pip {
-                      install("numpy")
-                      install("tokenizers")
-                  }
-              }
-          }
-          dependencies {
-              implementation("androidx.core:core-ktx:1.10.1")
-              implementation("androidx.appcompat:appcompat:1.6.1")
-              implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.6.1")
-              implementation("androidx.lifecycle:lifecycle-runtime-compose:2.6.1")
-              implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.6.1")
-              implementation("androidx.compose.ui:ui:1.5.0")
-              implementation("androidx.compose.material3:material3:1.1.0")
-              implementation("androidx.activity:activity-compose:1.7.2")
-              implementation("com.microsoft.onnxruntime:onnxruntime-android:1.21.1")
-              implementation("androidx.room:room-runtime:2.6.1")
-              implementation("androidx.room:room-ktx:2.6.1")
-              kapt("androidx.room:room-compiler:2.6.1")
-              implementation("androidx.camera:camera-core:1.3.0")
-              implementation("androidx.camera:camera-camera2:1.3.0")
-              implementation("androidx.camera:camera-lifecycle:1.3.0")
-              implementation("androidx.camera:camera-view:1.3.0")
-              implementation("com.google.accompanist:accompanist-permissions:0.32.0")
-          }
-          GRADLEFIX
+          # 切换 ABI 为 x86_64
+          sed -i 's/abiFilters += "arm64-v8a"/abiFilters += "x86_64"/g' app/build.gradle.kts
 
-      - name: Nuclear clean Gradle caches
-        run: |
-          rm -rf ~/.gradle/caches
-          gradle clean --refresh-dependencies --no-daemon
+      - name: Build x86_64 APK
+        run: gradle assembleDebug --no-build-cache -Dorg.gradle.jvmargs="-Xmx6g"
+        env: {GRADLE_OPTS: "-Xmx6g"}
 
       - name: Cache ONNX model
         id: cache-model
         uses: actions/cache@v4
         with:
           path: app/src/main/assets/model
-          key: deepseek-onnx-final-${{ hashFiles('.github/workflows/build.yml') }}
-          restore-keys: deepseek-onnx-final-
+          key: deepseek-onnx-${{ hashFiles('.github/workflows/build.yml') }}
+          restore-keys: deepseek-onnx-
 
-      - name: Create model directory
-        if: steps.cache-model.outputs.cache-hit != 'true'
-        run: mkdir -p app/src/main/assets/model
-
-      - name: Download DeepSeek ONNX model (super retry)
+      - name: Download model (if not cached)
         if: steps.cache-model.outputs.cache-hit != 'true'
         working-directory: app/src/main/assets/model
-        timeout-minutes: 30
+        timeout-minutes: 20
         run: |
           pip install -q huggingface_hub
           python3 << 'PYEOF'
           import os, sys, time, random
           from huggingface_hub import hf_hub_download
-          token = os.environ.get("HF_TOKEN", None)
-          mirrors = ["https://huggingface.co", "https://hf-mirror.com", "https://huggingface.co"]
+          mirrors = ["https://huggingface.co", "https://hf-mirror.com"]
           repo_id = "onnx-community/DeepSeek-R1-Distill-Qwen-1.5B-ONNX"
           files = {"onnx/model_quantized.onnx": 800_000_000, "tokenizer.json": 1_000_000, "tokenizer_config.json": 100}
-          def download_file(filename, min_size, max_retries=15):
+          for fname, min_size in files.items():
               for mirror in mirrors:
                   os.environ["HF_ENDPOINT"] = mirror
-                  for attempt in range(max_retries):
+                  for attempt in range(10):
                       try:
-                          jitter = random.uniform(5, 30)
-                          time.sleep(jitter)
-                          path = hf_hub_download(repo_id, filename, local_dir=".", token=token, resume_download=True)
-                          size = os.path.getsize(path)
-                          if size >= min_size:
-                              print(f"✅ Downloaded {filename} from {mirror}")
-                              return path
-                          else:
-                              print(f"Size mismatch {filename}: {size} < {min_size}")
+                          time.sleep(random.uniform(5, 15))
+                          path = hf_hub_download(repo_id, fname, local_dir=".")
+                          if os.path.getsize(path) >= min_size:
+                              break
                       except Exception as e:
-                          print(f"❌ Mirror {mirror} fail: {e}")
-                          if "429" in str(e):
-                              time.sleep(random.uniform(60, 120))
-                          else:
-                              time.sleep(15 * (attempt + 1))
-              return None
-          for fname, min_size in files.items():
-              if not download_file(fname, min_size):
-                  print(f"FATAL: Failed to download {fname}")
+                          print(f"Error: {e}")
+                          time.sleep(30*(attempt+1))
+                  else:
+                      continue
+                  break
+              else:
+                  print(f"Failed to download {fname}")
                   sys.exit(1)
           if os.path.exists("onnx/model_quantized.onnx"):
               os.rename("onnx/model_quantized.onnx", "model.onnx")
               if os.path.isdir("onnx") and not os.listdir("onnx"):
                   os.rmdir("onnx")
-          print("✅ All model files ready")
+          print("Model ready")
           PYEOF
 
-      - name: Build debug APK (arm64-v8a)
-        run: gradle assembleDebug --rerun-tasks --no-build-cache --no-configuration-cache -Dorg.gradle.jvmargs="-Xmx6g"
+      - name: x86_64 Emulator Test
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 30
+          arch: x86_64
+          target: google_apis
+          ram-size: 2048M
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
+          disable-animations: true
+          script: |
+            adb wait-for-device
+            adb install app/build/outputs/apk/debug/app-debug.apk
+            adb shell pm grant com.eternal.ai android.permission.RECORD_AUDIO
+            adb shell pm grant com.eternal.ai android.permission.CAMERA
+            adb shell pm grant com.eternal.ai android.permission.WRITE_EXTERNAL_STORAGE
+            adb shell pm grant com.eternal.ai android.permission.READ_EXTERNAL_STORAGE
+            adb shell am start -n com.eternal.ai/.SplashActivity
+            sleep 12
+            adb shell input tap 200 1800
+            sleep 1
+            adb shell input text "你好"
+            sleep 1
+            adb shell input tap 900 1800
+            sleep 25
+            log=$(adb logcat -d | grep -i "永恒之神\|推理成功\|生成回复\|assistant" || true)
+            if [ -z "$log" ]; then
+                echo "ERROR: No inference reply detected"
+                adb shell pidof com.eternal.ai || echo "App not running"
+                exit 1
+            fi
+            echo "Inference verified: $log"
+
+  build-arm64:
+    needs: test-emulator
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: {java-version: '17', distribution: 'temurin'}
+      - uses: gradle/actions/setup-gradle@v3
+        with: {gradle-version: '8.9'}
+
+      - name: Prepare arm64 source
+        run: |
+          # 恢复 VideoScreen
+          cat > app/src/main/java/com/eternal/ai/VideoScreen.kt << 'VIDEOFIX'
+          package com.eternal.ai
+          import androidx.compose.foundation.background
+          import androidx.compose.foundation.layout.*
+          import androidx.compose.material3.*
+          import androidx.compose.runtime.*
+          import androidx.compose.ui.Alignment
+          import androidx.compose.ui.Modifier
+          import androidx.compose.ui.text.font.FontWeight
+          import androidx.compose.ui.unit.dp
+          import androidx.compose.ui.unit.sp
+
+          @Composable
+          fun VideoScreen() {
+              Box(modifier = Modifier.fillMaxSize().background(NeoChineseColors.InkBlack), contentAlignment = Alignment.Center) {
+                  Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                      Text("📹 神域洞察", color = NeoChineseColors.SkyBlue, fontSize = 24.sp, fontWeight = FontWeight.Bold)
+                      Spacer(modifier = Modifier.height(16.dp))
+                      Text("摄像头功能开发中", color = NeoChineseColors.RicePaper, fontSize = 14.sp)
+                      Spacer(modifier = Modifier.height(8.dp))
+                      Text("神念所至，万物皆现", color = NeoChineseColors.Gray, fontSize = 12.sp)
+                  }
+              }
+          }
+          VIDEOFIX
+          # 恢复 arm64 ABI
+          sed -i 's/abiFilters += "x86_64"/abiFilters += "arm64-v8a"/g' app/build.gradle.kts
+
+      - name: Build arm64 APK
+        run: gradle assembleDebug --no-build-cache -Dorg.gradle.jvmargs="-Xmx6g"
         env: {GRADLE_OPTS: "-Xmx6g"}
 
-      - name: Install validation dependencies
-        run: pip install onnxruntime tokenizers
-
-      - name: Validate model with dialogues (at least 3)
-        working-directory: app/src/main/assets/model
-        timeout-minutes: 30
-        run: |
-          python3 << 'PYEOF'
-          import onnxruntime as ort, numpy as np, json, os, sys, time
-          from tokenizers import Tokenizer
-          session = ort.InferenceSession("model.onnx", providers=['CPUExecutionProvider'])
-          tokenizer = Tokenizer.from_file("tokenizer.json")
-          output_names = [o.name for o in session.get_outputs()]
-          logits_name = next((n for n in output_names if "logits" in n.lower()), output_names[0])
-          logits_index = output_names.index(logits_name)
-          eos_token_id = json.load(open("tokenizer_config.json")).get("eos_token_id", 151643)
-          attention_mask_shape = None
-          for inp in session.get_inputs():
-              if inp.name == "attention_mask": attention_mask_shape = inp.shape
-          past_info = {}
-          for inp in session.get_inputs():
-              if inp.name.startswith("past_key_values."): past_info[inp.name] = (inp.shape[1], inp.shape[3])
-          def create_attention_mask(seq_len):
-              shape = list(attention_mask_shape) if attention_mask_shape else [1, seq_len]
-              for i in range(len(shape)):
-                  if not isinstance(shape[i], int) or shape[i] <= 0: shape[i] = seq_len
-              if len(shape) > 0: shape[0] = 1
-              return np.ones(shape, dtype=np.int64)
-          def gen(prompt):
-              formatted = f"<|im_start|>system\n汝是永恒之神。<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n"
-              enc = tokenizer.encode(formatted)
-              all_ids = enc.ids
-              input_ids = np.array(all_ids, dtype=np.int64).reshape(1, -1)
-              seq_len = input_ids.shape[1]
-              attention_mask = create_attention_mask(seq_len)
-              position_ids = np.arange(seq_len, dtype=np.int64).reshape(1, -1)
-              past = {}
-              for i in range(28):
-                  key_name = f"past_key_values.{i}.key"
-                  heads = past_info.get(key_name, (2,))[0]; head_dim = past_info.get(key_name, (0, 128))[1]
-                  past[key_name] = np.zeros((1, heads, 0, head_dim), dtype=np.float32)
-                  past[f"past_key_values.{i}.value"] = np.zeros((1, heads, 0, head_dim), dtype=np.float32)
-              generated = []
-              for _ in range(150):
-                  ort_inputs = {"input_ids": input_ids, "attention_mask": attention_mask, "position_ids": position_ids, **past}
-                  outputs = session.run(output_names, ort_inputs)
-                  logits = outputs[logits_index][0]; next_token = int(np.argmax(logits[-1, :]))
-                  if generated and next_token == eos_token_id: break
-                  generated.append(next_token)
-                  input_ids = np.array([[next_token]], dtype=np.int64)
-                  attention_mask = create_attention_mask(1)
-                  position_ids = np.array([[seq_len + len(generated) - 1]], dtype=np.int64)
-                  new_past = {}
-                  for i, name in enumerate(output_names):
-                      if name.startswith("present."):
-                          tensor = outputs[i]; parts = name.removeprefix("present.").split(".")
-                          if len(parts) >= 2:
-                              layer_idx = int(parts[0])
-                              if name.endswith(".key"): new_past[f"past_key_values.{layer_idx}.key"] = tensor
-                              elif name.endswith(".value"): new_past[f"past_key_values.{layer_idx}.value"] = tensor
-                  if new_past: past = new_past
-              if not generated: return None
-              decoded = tokenizer.decode(np.array(all_ids + generated, dtype=np.int64).reshape(1, -1).flatten().tolist())
-              idx = decoded.rfind("<|im_start|>assistant\n")
-              return decoded[idx+len("<|im_start|>assistant\n"):].strip() if idx>=0 else decoded
-          prompts = ["你好", "你是谁？", "1+1=？", "什么是爱？", "宇宙有多大？", "生命的意义", "今天天气", "写一首诗", "推荐一本书", "如何幸福"]
-          success = 0
-          for p in prompts:
-              for attempt in range(3):
-                  reply = gen(p)
-                  if reply and len(reply.strip()) >= 2:
-                      success += 1; print(f"✓ [{p}] -> {reply[:60]}"); break
-                  time.sleep(1)
-              if success >= 3: break
-          if success < 3:
-              print(f"错误: 仅 {success}/10 条对话通过验证，构建中止"); sys.exit(1)
-          print(f"离线推理验证通过: {success} 条对话")
-          PYEOF
-
-      - name: Upload APK (arm64-v8a)
+      - name: Upload arm64 APK
         uses: actions/upload-artifact@v4
-        with: {name: "永恒之神-APK-arm64-v8a", path: "app/build/outputs/apk/debug/app-debug.apk"}
+        with: {name: "永恒之神-APK-arm64-优化版", path: "app/build/outputs/apk/debug/app-debug.apk"}

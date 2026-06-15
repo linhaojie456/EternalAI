@@ -26,80 +26,86 @@ class InferenceEngine(private val context: Context) {
     var isModelLoaded = false
         private set
 
-    private var initError: String? = null
+    // 加载进度回调 (0~100)
+    var onProgress: ((Int, String) -> Unit)? = null
 
     fun loadModel(): Boolean {
         loadStatus = "检查模型文件..."
+        onProgress?.invoke(10, "检查模型文件")
         try {
             val modelDir = File(context.filesDir, "model")
             val modelFile = File(modelDir, "model.onnx")
             if (!modelFile.exists()) {
-                initError = "模型文件不存在: ${modelFile.absolutePath}"
-                loadStatus = "失败: $initError"
-                writeLog(initError!!)
+                initError("模型文件不存在: ${modelFile.absolutePath}")
                 return false
             }
             modelSize = modelFile.length()
             if (modelSize < 1_000_000) {
-                initError = "模型文件异常小: $modelSize 字节"
-                loadStatus = "失败: $initError"
-                writeLog(initError!!)
+                initError("模型文件异常小: $modelSize 字节")
                 return false
             }
+
+            onProgress?.invoke(30, "创建 ONNX 会话")
             val options = OrtSession.SessionOptions()
             session = env.createSession(modelFile.absolutePath, options)
             writeLog("ONNX 会话创建成功")
 
+            // 解析输入信息
             for (input in session!!.inputInfo.values) {
                 if (input.name == "attention_mask") {
                     val tensorInfo = input.info as? TensorInfo
                     attentionMaskShape = tensorInfo?.shape
-                    writeLog("attention_mask 形状: ${attentionMaskShape?.joinToString()}")
                     break
                 }
             }
-
             val inputInfo = session!!.inputInfo
             var maxLayerIndex = -1
             for ((name, nodeInfo) in inputInfo) {
                 if (name.startsWith("past_key_values.")) {
                     val tensorInfo = nodeInfo.info as? TensorInfo
                     val shape = tensorInfo?.shape
-                    if (shape != null && shape.size >= 4) { numKVHeads = shape[1].toInt(); headDim = shape[3].toInt() }
+                    if (shape != null && shape.size >= 4) {
+                        numKVHeads = shape[1].toInt()
+                        headDim = shape[3].toInt()
+                    }
                     val parts = name.split(".")
-                    if (parts.size >= 3) { val layerIndex = parts[2].toIntOrNull() ?: continue; if (layerIndex > maxLayerIndex) maxLayerIndex = layerIndex }
+                    if (parts.size >= 3) {
+                        val layerIndex = parts[2].toIntOrNull() ?: continue
+                        if (layerIndex > maxLayerIndex) maxLayerIndex = layerIndex
+                    }
                 }
             }
             if (maxLayerIndex >= 0) numLayers = maxLayerIndex + 1
 
+            onProgress?.invoke(60, "加载分词器")
             tokenizer = TokenizerHelper(modelDir)
-            if (tokenizer?.loadError != null) {
-                initError = "分词器加载失败: ${tokenizer?.loadError}"
-                loadStatus = "失败: $initError"
-                writeLog(initError!!)
-                isModelLoaded = false
+            tokenizer?.loadError?.let {
+                initError("分词器加载失败: $it")
                 return false
             }
 
             val testIds = tokenizer!!.encode("测试")
             if (testIds.isEmpty()) {
-                initError = "分词器测试失败"
-                loadStatus = "失败: $initError"
-                writeLog(initError!!)
+                initError("分词器测试失败")
                 return false
             }
 
             isModelLoaded = true
-            initError = null
-            loadStatus = "神格已激活 (${modelSize / (1024*1024)}MB, 层:$numLayers, KV头:$numKVHeads, 维:$headDim, EOS:${tokenizer?.eosTokenId})"
+            loadStatus = "神格已激活 (${modelSize / (1024*1024)}MB, 层:$numLayers)"
+            onProgress?.invoke(100, loadStatus)
             writeLog("模型加载成功，测试分词通过")
             return true
         } catch (e: Exception) {
-            initError = "${e.javaClass.simpleName}: ${e.message}"
-            loadStatus = "异常: $initError"
-            writeLog("加载异常: $initError")
+            initError("${e.javaClass.simpleName}: ${e.message}")
             return false
         }
+    }
+
+    private fun initError(msg: String) {
+        lastError = msg
+        loadStatus = "失败: $msg"
+        writeLog(msg)
+        isModelLoaded = false
     }
 
     private fun writeLog(msg: String) {
@@ -109,6 +115,7 @@ class InferenceEngine(private val context: Context) {
         } catch (_: Exception) {}
     }
 
+    // 以下推理函数保持原有逻辑，仅微调
     private fun createEmptyPastKeyValues(): Map<String, OnnxTensor> {
         val shape = longArrayOf(1L, numKVHeads.toLong(), 0L, headDim.toLong())
         val map = mutableMapOf<String, OnnxTensor>()
@@ -166,7 +173,7 @@ class InferenceEngine(private val context: Context) {
 
     fun generate(prompt: String, maxTokens: Int = 200): String {
         if (!isModelLoaded) {
-            return "神格初始化失败: ${initError ?: "未知错误"}"
+            return "神格初始化失败: ${lastError ?: "未知错误"}"
         }
         val tok = tokenizer ?: return "分词器不可用"
         val eosId = tok.eosTokenId
@@ -254,8 +261,14 @@ class InferenceEngine(private val context: Context) {
     }
 
     fun start(coordinator: EngineCoordinator, onStatus: (String) -> Unit) {
-        loadModel()
-        onStatus(if (isModelLoaded) "[推理] 神格已激活" else "[推理] 神格激活失败: ${initError ?: "未知"}")
+        // 异步加载模型，通过 onProgress 反馈进度
+        Thread {
+            loadModel()
+            onStatus(if (isModelLoaded) "[推理] 神格已激活" else "[推理] 神格激活失败: ${lastError ?: "未知"}")
+        }.start()
     }
-    fun stop() { session?.close() }
+
+    fun stop() {
+        session?.close()
+    }
 }
