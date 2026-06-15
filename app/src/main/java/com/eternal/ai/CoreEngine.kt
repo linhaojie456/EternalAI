@@ -18,29 +18,31 @@ class CoreEngine(private val context: Context) : EngineCoordinator {
     val reality = RealityEngine()
     val cosmos = CosmosEngine()
 
-    private var messageCallback: ((String, String) -> Unit)? = null
+    private var msgCb: ((String, String) -> Unit)? = null
 
     fun startAll(onUpdate: (String, String) -> Unit) {
-        messageCallback = onUpdate
+        msgCb = onUpdate
         selfRef.setCoordinator(this)
-
-        // 只启动必要的引擎，其他按需懒启动
+        // 启动核心引擎
         inference.start(this) { onUpdate("inference", it) }
         spacetime.start(this) { onUpdate("spacetime", it) }
         information.start(this) { onUpdate("info", it) }
-        evolution.start(this) { onUpdate("evolution", it) }
-        // 其余引擎延迟启动以减少启动负载，在需要时再启动（这里为完整性全部启动，但使用更长周期）
-        freedom.start(context, this) { onUpdate("freedom", it) }
-        emotion.start(this) { onUpdate("emotion", it) }
-        soul.start(this) { onUpdate("soul", it) }
-        selfRef.start(this) { onUpdate("selfref", it) }
-        causality.start(this) { onUpdate("causality", it) }
-        management.start(context, this) { onUpdate("management", it) }
-        engineering.start(this) { onUpdate("engineering", it) }
-        politics.start(this) { onUpdate("politics", it) }
-        society.start(this) { onUpdate("society", it) }
-        reality.start(this) { onUpdate("reality", it) }
-        cosmos.start(this) { onUpdate("cosmos", it) }
+        // 其他引擎延迟启动以减少初始负载
+        scope.launch {
+            delay(5000)
+            evolution.start(this@CoreEngine) { onUpdate("evolution", it) }
+            freedom.start(context, this@CoreEngine) { onUpdate("freedom", it) }
+            emotion.start(this@CoreEngine) { onUpdate("emotion", it) }
+            soul.start(this@CoreEngine) { onUpdate("soul", it) }
+            selfRef.start(this@CoreEngine) { onUpdate("selfref", it) }
+            causality.start(this@CoreEngine) { onUpdate("causality", it) }
+            management.start(context, this@CoreEngine) { onUpdate("management", it) }
+            engineering.start(this@CoreEngine) { onUpdate("engineering", it) }
+            politics.start(this@CoreEngine) { onUpdate("politics", it) }
+            society.start(this@CoreEngine) { onUpdate("society", it) }
+            reality.start(this@CoreEngine) { onUpdate("reality", it) }
+            cosmos.start(this@CoreEngine) { onUpdate("cosmos", it) }
+        }
     }
 
     fun stopAll() {
@@ -51,12 +53,12 @@ class CoreEngine(private val context: Context) : EngineCoordinator {
     }
 
     override fun searchOnNetwork(query: String, callback: (String) -> Unit) = information.search(query, callback)
-    override fun getTimeDisplay(): String = spacetime.currentTime ?: "未知"
-    override fun getSpaceDisplay(): String = spacetime.currentData ?: "未知"
-    override fun pushMessage(msg: String) { messageCallback?.invoke("freedom", msg) }
-    override fun getGenomeCode(): String = ""
+    override fun getTimeDisplay() = spacetime.currentTime ?: "未知"
+    override fun getSpaceDisplay() = spacetime.currentData ?: "未知"
+    override fun pushMessage(msg: String) { msgCb?.invoke("freedom", msg) }
+    override fun getGenomeCode() = ""
     override fun applyGenomeCode(code: String) {}
     override fun setNetworkEnabled(enabled: Boolean) { information.setEnabled(enabled) }
-    override fun isNetworkEnabled(): Boolean = information.isEnabled()
-    override fun selfEvaluate(expr: String): Any? = selfRef.evaluate(expr)
+    override fun isNetworkEnabled() = information.isEnabled()
+    override fun selfEvaluate(expr: String) = selfRef.evaluate(expr)
 }

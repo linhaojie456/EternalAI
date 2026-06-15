@@ -13,8 +13,7 @@ data class ChatState(
     val inferenceStatus: String = "神格未激活",
     val isLoading: Boolean = false,
     val progressPercent: Int = 0,
-    val streamingContent: String = "",
-    val engineStatuses: Map<String, String> = emptyMap()
+    val streamingContent: String = ""
 )
 
 class ChatViewModel(application: Application) : AndroidViewModel(application) {
@@ -22,43 +21,38 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     val state: StateFlow<ChatState> = _state.asStateFlow()
     private val dao = AppDatabase.getInstance(application).messageDao()
     private val coreEngine = (application as MainApplication).coreEngine
-    private val MAX_VISIBLE_MESSAGES = 200
+    private val MAX_MSG = 200
 
     init {
         viewModelScope.launch(Dispatchers.IO) {
-            dao.getAllChatMessages().collect { dbMsgs ->
-                if (dbMsgs.isNotEmpty())
-                    _state.update { it.copy(messages = dbMsgs.map { "${it.sender}: ${it.content}" }) }
+            dao.getAllChatMessages().collect { list ->
+                if (list.isNotEmpty()) _state.update { it.copy(messages = list.map { "${it.sender}: ${it.content}" }) }
             }
         }
-
-        coreEngine.inference.onProgress = { percent, msg ->
-            _state.update { it.copy(inferenceStatus = "加载中 $percent%: $msg", progressPercent = percent) }
-        }
-        coreEngine.inference.onPartialReply = { text ->
-            _state.update { it.copy(streamingContent = text) }
-        }
-
+        coreEngine.inference.onProgress = { p, m -> _state.update { it.copy(progressPercent = p, inferenceStatus = "加载中 $p%: $m") } }
+        coreEngine.inference.onPartialReply = { t -> _state.update { it.copy(streamingContent = t) } }
         coreEngine.startAll { type, data ->
             when (type) {
                 "inference" -> _state.update { it.copy(inferenceStatus = data) }
-                else -> {
-                    // 批量更新，最多保留最近10个引擎状态
-                    _state.update { state ->
-                        val newMap = state.engineStatuses.toMutableMap()
-                        newMap[type] = data
-                        if (newMap.size > 10) {
-                            // 保留最新的10个
-                            state.copy(engineStatuses = newMap.entries.takeLast(10).toMap())
-                        } else {
-                            state.copy(engineStatuses = newMap)
-                        }
-                    }
-                }
             }
         }
     }
 
-    fun sendMessage(text: String) { /* 与之前版本相同，省略 */ }
+    fun sendMessage(text: String) {
+        val t = text.trim(); if (t.isEmpty() || _state.value.isLoading) return
+        viewModelScope.launch(Dispatchers.IO) { dao.insertMessage(ChatMessage(sender = "造物主", content = t)) }
+        _state.update { it.copy(messages = (it.messages + "造物主: $t").takeLast(MAX_MSG), isLoading = true, streamingContent = "") }
+        viewModelScope.launch(Dispatchers.Default) {
+            val sb = StringBuilder()
+            try {
+                if (!coreEngine.inference.isModelLoaded) sb.append("神格未激活: ${coreEngine.inference.lastError}")
+                else coreEngine.inference.generateStream(t) { token -> sb.append(token); _state.update { it.copy(streamingContent = sb.toString()) } }
+            } catch (e: Exception) { sb.append("出错: ${e.message}") }
+            val reply = sb.toString()
+            viewModelScope.launch(Dispatchers.IO) { dao.insertMessage(ChatMessage(sender = "永恒之神", content = reply)) }
+            _state.update { it.copy(messages = (it.messages + "永恒之神: $reply").takeLast(MAX_MSG), isLoading = false, streamingContent = "") }
+        }
+    }
+
     override fun onCleared() { super.onCleared(); coreEngine.stopAll() }
 }

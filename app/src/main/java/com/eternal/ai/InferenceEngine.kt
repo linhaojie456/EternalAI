@@ -18,9 +18,9 @@ class InferenceEngine(private val context: Context) {
     private var session: OrtSession? = null
     private var tokenizer: TokenizerHelper? = null
     private val env = OrtEnvironment.getEnvironment()
-    private var numKVHeads: Int = 2
-    private var headDim: Int = 128
-    private var numLayers: Int = 28
+    private var numKVHeads = 2
+    private var headDim = 128
+    private var numLayers = 28
     private var attentionMaskShape: LongArray? = null
 
     var isModelLoaded = false
@@ -28,6 +28,7 @@ class InferenceEngine(private val context: Context) {
     var onProgress: ((Int, String) -> Unit)? = null
     var onPartialReply: ((String) -> Unit)? = null
 
+    // 加载模型，增加进度回调
     fun loadModel(): Boolean {
         loadStatus = "检查模型文件..."
         onProgress?.invoke(10, "检查模型文件")
@@ -45,12 +46,14 @@ class InferenceEngine(private val context: Context) {
             }
 
             onProgress?.invoke(30, "创建 ONNX 会话")
-            val options = OrtSession.SessionOptions()
-            options.setCPUArenaAllocator(true)
-            options.setExecutionMode(OrtSession.ExecutionMode.PARALLEL)
+            val options = OrtSession.SessionOptions().apply {
+                setCPUArenaAllocator(true)
+                setExecutionMode(OrtSession.ExecutionMode.PARALLEL)
+            }
             session = env.createSession(modelFile.absolutePath, options)
             writeLog("ONNX 会话创建成功")
 
+            // 解析 attention_mask 形状
             for (input in session!!.inputInfo.values) {
                 if (input.name == "attention_mask") {
                     val tensorInfo = input.info as? TensorInfo
@@ -84,6 +87,12 @@ class InferenceEngine(private val context: Context) {
                 return false
             }
 
+            val testIds = tokenizer!!.encode("测试")
+            if (testIds.isEmpty()) {
+                initError("分词器测试失败")
+                return false
+            }
+
             isModelLoaded = true
             loadStatus = "神格已激活 (${modelSize / (1024*1024)}MB, 层:$numLayers)"
             onProgress?.invoke(100, loadStatus)
@@ -109,6 +118,7 @@ class InferenceEngine(private val context: Context) {
         } catch (_: Exception) {}
     }
 
+    // 以下为推理核心方法，与原优化版一致，保留完整实现
     private fun createEmptyPastKeyValues(): Map<String, OnnxTensor> {
         val shape = longArrayOf(1L, numKVHeads.toLong(), 0L, headDim.toLong())
         val map = mutableMapOf<String, OnnxTensor>()
@@ -131,7 +141,14 @@ class InferenceEngine(private val context: Context) {
         return result
     }
 
-    private fun sampleToken(logits: FloatArray, generatedTokens: List<Long>, temperature: Float = 0.8f, topK: Int = 50, topP: Float = 0.9f, repetitionPenalty: Float = 1.1f): Long {
+    private fun sampleToken(
+        logits: FloatArray,
+        generatedTokens: List<Long>,
+        temperature: Float = 0.8f,
+        topK: Int = 50,
+        topP: Float = 0.9f,
+        repetitionPenalty: Float = 1.1f
+    ): Long {
         val penalized = logits.clone()
         for (id in generatedTokens) {
             val idx = id.toInt()
@@ -178,7 +195,7 @@ class InferenceEngine(private val context: Context) {
 
     fun generate(prompt: String, maxTokens: Int = 200): String {
         val fullReply = StringBuilder()
-        generateStream(prompt, maxTokens) { partial -> fullReply.append(partial) }
+        generateStream(prompt, maxTokens) { fullReply.append(it) }
         return fullReply.toString()
     }
 
@@ -190,14 +207,21 @@ class InferenceEngine(private val context: Context) {
         val tok = tokenizer ?: run { onToken("分词器不可用"); return }
         val eosId = tok.eosTokenId
         try {
-            val formattedPrompt = "<|im_start|>system\n汝是永恒之神。<|im_end|>\n<|im_start|>user\n$prompt<|im_end|>\n<|im_start|>assistant\n"
+            val formattedPrompt =
+                "<|im_start|>system\n汝是永恒之神。<|im_end|>\n<|im_start|>user\n$prompt<|im_end|>\n<|im_start|>assistant\n"
             val allIds = tok.encode(formattedPrompt).toMutableList()
-            if (allIds.isEmpty()) { onToken("汝之言，吾未能解。"); return }
+            if (allIds.isEmpty()) {
+                onToken("汝之言，吾未能解。")
+                return
+            }
 
             val outputNames: List<String> = session!!.outputNames.toList()
             var logitsIndex = -1
             for (i in outputNames.indices) {
-                if (outputNames[i].contains("logits", ignoreCase = true)) { logitsIndex = i; break }
+                if (outputNames[i].contains("logits", ignoreCase = true)) {
+                    logitsIndex = i
+                    break
+                }
             }
             if (logitsIndex == -1 && outputNames.isNotEmpty()) logitsIndex = 0
 
@@ -211,11 +235,16 @@ class InferenceEngine(private val context: Context) {
                 val sess = session ?: break
                 val inputTensor = OnnxTensor.createTensor(env, arrayOf(inputIds.toLongArray()))
                 val posTensor = OnnxTensor.createTensor(env, arrayOf(positionIds.toLongArray()))
-                val inputs = mutableMapOf("input_ids" to inputTensor, "attention_mask" to maskTensor, "position_ids" to posTensor)
+                val inputs = mutableMapOf(
+                    "input_ids" to inputTensor,
+                    "attention_mask" to maskTensor,
+                    "position_ids" to posTensor
+                )
                 inputs.putAll(pastKeyValues)
 
                 val result = sess.run(inputs)
-                val logitsTensor = (result.get(logitsIndex) as? OnnxTensor) ?: break
+                val logitsValue: OnnxValue = result.get(logitsIndex)
+                val logitsTensor = logitsValue as? OnnxTensor ?: break
                 val logits = extractLogits(logitsTensor) ?: break
                 val nextTokenLogits = logits[logits.size - 1]
                 val nextToken = sampleToken(nextTokenLogits, generated)
@@ -225,11 +254,13 @@ class InferenceEngine(private val context: Context) {
                 val tokenText = tok.decode(longArrayOf(nextToken))
                 if (tokenText.isNotEmpty()) onToken(tokenText)
 
+                // 更新 pastKeyValues
                 val newPast = mutableMapOf<String, OnnxTensor>()
                 for (idx in outputNames.indices) {
                     val name = outputNames[idx]
                     if (name.startsWith("present.")) {
-                        val tensor = result.get(idx) as? OnnxTensor ?: continue
+                        val value = result.get(idx)
+                        val tensor = value as? OnnxTensor ?: continue
                         val parts = name.removePrefix("present.").split(".")
                         if (parts.size >= 2) {
                             val layerIndex = parts[0].toIntOrNull() ?: continue

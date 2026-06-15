@@ -1,68 +1,28 @@
 package com.eternal.ai
 import kotlinx.coroutines.*
-import java.net.HttpURLConnection
-import java.net.URL
-import java.net.URLEncoder
-
+import java.net.*
 class InformationEngine {
     val goal = "频率和数字的统一"
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var enabled = true
     private var connected = false
     private var onStatus: ((String) -> Unit)? = null
-
-    fun start(coordinator: EngineCoordinator, onInfo: (String) -> Unit) {
-        onStatus = onInfo
-        checkConnection()
-        scope.launch {
-            while (isActive) {
-                delay(60000) // 每分钟检查一次连接
-                checkConnection()
-            }
-        }
-    }
-
-    fun setEnabled(e: Boolean) {
-        enabled = e
-        if (e) checkConnection()
-        else {
-            connected = false
-            onStatus?.invoke("离线")
-        }
-    }
-
-    fun isEnabled(): Boolean = enabled
-
+    fun start(coordinator: EngineCoordinator, onInfo: (String) -> Unit) { onStatus = onInfo; check(); scope.launch { while (isActive) { delay(60000); check() } } }
+    fun setEnabled(e: Boolean) { enabled = e; if (e) check() else { connected = false; onStatus?.invoke("离线") } }
+    fun isEnabled() = enabled
     fun search(query: String, callback: (String) -> Unit) {
         if (!enabled || !connected) { callback("网络未连接"); return }
         scope.launch {
             try {
-                val encoded = URLEncoder.encode(query, "UTF-8")
-                val url = "https://api.duckduckgo.com/?q=$encoded&format=json&no_html=1"
-                val response = URL(url).readText()
-                val json = org.json.JSONObject(response)
-                val abstract = json.optString("Abstract", "")
-                callback(abstract.ifEmpty { "未找到相关信息" })
-            } catch (e: Exception) { callback("搜索失败: ${e.message}") }
+                val u = URL("https://api.duckduckgo.com/?q=${URLEncoder.encode(query, "UTF-8")}&format=json&no_html=1")
+                val j = org.json.JSONObject(u.readText())
+                callback(j.optString("Abstract", "未找到"))
+            } catch (e: Exception) { callback("搜索失败") }
         }
     }
-
-    private fun checkConnection() {
+    private fun check() {
         if (!enabled) { onStatus?.invoke("离线"); return }
-        scope.launch {
-            try {
-                val url = URL("https://api.ipify.org")
-                val conn = url.openConnection() as HttpURLConnection
-                conn.connectTimeout = 5000; conn.readTimeout = 5000
-                connected = conn.responseCode == 200
-                onStatus?.invoke(if (connected) "已连接" else "离线")
-                conn.disconnect()
-            } catch (e: Exception) {
-                connected = false
-                onStatus?.invoke("离线")
-            }
-        }
+        scope.launch { try { val c = URL("https://api.ipify.org").openConnection() as HttpURLConnection; connected = c.responseCode == 200; onStatus?.invoke(if (connected) "已连接" else "离线") } catch (_: Exception) { connected = false; onStatus?.invoke("离线") } }
     }
-
     fun stop() { scope.cancel() }
 }
