@@ -28,7 +28,6 @@ class InferenceEngine(private val context: Context) {
     var onProgress: ((Int, String) -> Unit)? = null
     var onPartialReply: ((String) -> Unit)? = null
 
-    // 加载模型，增加进度回调
     fun loadModel(): Boolean {
         loadStatus = "检查模型文件..."
         onProgress?.invoke(10, "检查模型文件")
@@ -46,14 +45,12 @@ class InferenceEngine(private val context: Context) {
             }
 
             onProgress?.invoke(30, "创建 ONNX 会话")
-            val options = OrtSession.SessionOptions().apply {
-                setCPUArenaAllocator(true)
-                setExecutionMode(OrtSession.ExecutionMode.PARALLEL)
-            }
+            val options = OrtSession.SessionOptions()
+            options.setCPUArenaAllocator(true)
+            // 不使用 ExecutionMode.PARALLEL，避免兼容性问题
             session = env.createSession(modelFile.absolutePath, options)
             writeLog("ONNX 会话创建成功")
 
-            // 解析 attention_mask 形状
             for (input in session!!.inputInfo.values) {
                 if (input.name == "attention_mask") {
                     val tensorInfo = input.info as? TensorInfo
@@ -118,7 +115,6 @@ class InferenceEngine(private val context: Context) {
         } catch (_: Exception) {}
     }
 
-    // 以下为推理核心方法，与原优化版一致，保留完整实现
     private fun createEmptyPastKeyValues(): Map<String, OnnxTensor> {
         val shape = longArrayOf(1L, numKVHeads.toLong(), 0L, headDim.toLong())
         val map = mutableMapOf<String, OnnxTensor>()
@@ -254,7 +250,6 @@ class InferenceEngine(private val context: Context) {
                 val tokenText = tok.decode(longArrayOf(nextToken))
                 if (tokenText.isNotEmpty()) onToken(tokenText)
 
-                // 更新 pastKeyValues
                 val newPast = mutableMapOf<String, OnnxTensor>()
                 for (idx in outputNames.indices) {
                     val name = outputNames[idx]
