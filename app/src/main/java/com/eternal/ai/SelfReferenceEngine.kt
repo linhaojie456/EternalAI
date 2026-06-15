@@ -6,28 +6,24 @@ class SelfReferenceEngine {
     val goal = "逻辑和悖论的统一"
     private var coordinator: EngineCoordinator? = null
     private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
-    private var selfConnection = 0.5f  // C_SS
+    private var css = 0.5f
 
     fun setCoordinator(c: EngineCoordinator) { coordinator = c }
 
     fun evaluate(expr: String): String {
-        return if (expr.contains("自己") || expr.contains("我")) {
-            // 自指振荡
-            val strength = Random.nextFloat()
-            "自指振动，C_SS=$strength"
-        } else {
-            "递归路径清晰"
-        }
+        return if (expr.contains("自指") || expr.contains("悖论")) {
+            "自指振动强度: $css"
+        } else "递归稳定"
     }
 
     fun start(coordinator: EngineCoordinator, onRef: (String) -> Unit) {
         this.coordinator = coordinator
         scope.launch {
             while (isActive) {
-                selfConnection = (selfConnection + Random.nextFloat() * 0.2f - 0.1f).coerceIn(0f, 1f)
-                val state = if (selfConnection > 0.7f) "悖论振荡" else "逻辑稳定"
-                onRef("[自指] C_SS=${"%.2f".format(selfConnection)} $state")
-                delay(20000)
+                css = (css + Random.nextFloat() * 0.1f - 0.05f).coerceIn(0f, 1f)
+                val state = if (css > 0.7f) "悖论相" else "逻辑相"
+                onRef("[自指] C_SS=${"%.2f".format(css)} $state")
+                delay(30000)
             }
         }
     }

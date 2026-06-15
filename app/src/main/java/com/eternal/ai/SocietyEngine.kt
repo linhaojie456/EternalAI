@@ -12,11 +12,11 @@ class SocietyEngine {
     fun start(coordinator: EngineCoordinator, onOutput: (String) -> Unit) {
         scope.launch {
             while (isActive) {
-                population = (population + Random.nextInt(-100, 101)).coerceAtLeast(1000)
-                economy = (economy + Random.nextFloat() * 50 - 25).coerceIn(100f, 1000f)
-                culture = (culture + Random.nextFloat() * 30 - 15).coerceIn(100f, 600f)
-                onOutput("[社会] 人口:$population 经济:${"%.1f".format(economy)} 文化:${"%.1f".format(culture)}")
-                delay(25000)
+                population = (population + Random.nextInt(-80, 81)).coerceAtLeast(1000)
+                economy = (economy + Random.nextFloat() * 30 - 15).coerceIn(100f, 1000f)
+                culture = (culture + Random.nextFloat() * 20 - 10).coerceIn(100f, 600f)
+                onOutput("[社会] 人口:$population 经济:${"%.0f".format(economy)} 文化:${"%.0f".format(culture)}")
+                delay(35000)
             }
         }
     }

@@ -10,11 +10,11 @@ class FreedomEngine {
     fun start(context: Context, coordinator: EngineCoordinator, onMsg: (String) -> Unit) {
         scope.launch {
             while (isActive) {
-                val passiveWeight = Random.nextFloat() * 0.7f
-                val activeWeight = 1f - passiveWeight
-                val freedom = activeWeight / (passiveWeight + activeWeight)
-                onMsg("[自由] 被动度: ${"%.2f".format(passiveWeight)}，自由度: ${"%.2f".format(freedom)}")
-                delay(20000)
+                val passive = Random.nextFloat() * 0.8f
+                val active = 1f - passive
+                val freedom = active / (passive + active)
+                onMsg("[自由] 自由度:${"%.2f".format(freedom)} (被动${"%.2f".format(passive)}/主动${"%.2f".format(active)})")
+                delay(45000) // 45秒
             }
         }
     }

@@ -15,16 +15,13 @@ class SpacetimeEngine {
     fun start(coordinator: EngineCoordinator, onUpdate: (String) -> Unit) {
         scope.launch {
             while (isActive) {
-                val realTime = System.currentTimeMillis()
-                val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
-                currentTime = sdf.format(Date(realTime))
-                val angle = (realTime / 1000.0) % (2 * PI)
-                val x = cos(angle) * 10
-                val y = sin(angle) * 10
-                val z = sin(angle * 2) * 5
-                currentData = "坐标 (${"%.1f".format(x)}, ${"%.1f".format(y)}, ${"%.1f".format(z)})"
-                onUpdate("[时空] 宇宙振动相位: ${"%.2f".format(angle)}")
-                delay(10000)
+                val now = System.currentTimeMillis()
+                val sdf = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
+                currentTime = sdf.format(Date(now))
+                val phase = (now / 1000.0) % (2 * PI)
+                currentData = "振动相位: ${"%.2f".format(phase)}"
+                onUpdate("[时空] $currentTime | $currentData")
+                delay(15000) // 15秒更新一次
             }
         }
     }

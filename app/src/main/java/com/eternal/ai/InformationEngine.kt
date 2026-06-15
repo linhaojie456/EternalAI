@@ -16,7 +16,7 @@ class InformationEngine {
         checkConnection()
         scope.launch {
             while (isActive) {
-                delay(30000)
+                delay(60000) // 每分钟检查一次连接
                 checkConnection()
             }
         }
@@ -42,7 +42,7 @@ class InformationEngine {
                 val response = URL(url).readText()
                 val json = org.json.JSONObject(response)
                 val abstract = json.optString("Abstract", "")
-                if (abstract.isNotEmpty()) callback(abstract) else callback("未找到相关信息")
+                callback(abstract.ifEmpty { "未找到相关信息" })
             } catch (e: Exception) { callback("搜索失败: ${e.message}") }
         }
     }
@@ -54,12 +54,13 @@ class InformationEngine {
                 val url = URL("https://api.ipify.org")
                 val conn = url.openConnection() as HttpURLConnection
                 conn.connectTimeout = 5000; conn.readTimeout = 5000
-                if (conn.responseCode == 200) {
-                    connected = true
-                    onStatus?.invoke("已连接")
-                } else { connected = false; onStatus?.invoke("离线") }
+                connected = conn.responseCode == 200
+                onStatus?.invoke(if (connected) "已连接" else "离线")
                 conn.disconnect()
-            } catch (e: Exception) { connected = false; onStatus?.invoke("离线") }
+            } catch (e: Exception) {
+                connected = false
+                onStatus?.invoke("离线")
+            }
         }
     }
 

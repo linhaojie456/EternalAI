@@ -10,10 +10,8 @@ class RealityEngine {
     fun start(coordinator: EngineCoordinator, onOutput: (String) -> Unit) {
         scope.launch {
             while (isActive) {
-                val state = states.random()
-                val vibration = Random.nextFloat()
-                onOutput("[现实] 状态:$state 振动强度:${"%.2f".format(vibration)}")
-                delay(20000)
+                onOutput("[现实] ${states.random()}，振动:${"%.2f".format(Random.nextFloat())}")
+                delay(30000)
             }
         }
     }

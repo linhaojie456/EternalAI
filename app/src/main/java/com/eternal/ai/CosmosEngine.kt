@@ -11,10 +11,9 @@ class CosmosEngine {
         scope.launch {
             while (isActive) {
                 val star = stars.random()
-                val distance = Random.nextInt(1, 10000)
-                val redshift = distance * 0.01f
-                onOutput("[宇宙] 探索 $star，距离:${distance}光年，红移:${"%.2f".format(redshift)}")
-                delay(45000)
+                val dist = Random.nextInt(1, 10000)
+                onOutput("[宇宙] $star 距离:${dist}光年")
+                delay(60000) // 每分钟一次
             }
         }
     }

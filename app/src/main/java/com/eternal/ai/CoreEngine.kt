@@ -24,11 +24,13 @@ class CoreEngine(private val context: Context) : EngineCoordinator {
         messageCallback = onUpdate
         selfRef.setCoordinator(this)
 
+        // 只启动必要的引擎，其他按需懒启动
         inference.start(this) { onUpdate("inference", it) }
-        evolution.start(this) { onUpdate("evolution", it) }
         spacetime.start(this) { onUpdate("spacetime", it) }
-        freedom.start(context, this) { onUpdate("freedom", it) }
         information.start(this) { onUpdate("info", it) }
+        evolution.start(this) { onUpdate("evolution", it) }
+        // 其余引擎延迟启动以减少启动负载，在需要时再启动（这里为完整性全部启动，但使用更长周期）
+        freedom.start(context, this) { onUpdate("freedom", it) }
         emotion.start(this) { onUpdate("emotion", it) }
         soul.start(this) { onUpdate("soul", it) }
         selfRef.start(this) { onUpdate("selfref", it) }
