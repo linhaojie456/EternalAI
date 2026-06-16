@@ -1,4 +1,4 @@
-name: Final Build + 10-Turn Test (Fix AVD)
+name: Final Build + 10-Turn Test (Fixed AVD Path)
 on: [push, workflow_dispatch]
 env:
   ANDROID_HOME: /usr/local/lib/android/sdk
@@ -57,8 +57,8 @@ jobs:
         uses: actions/cache@v4
         with:
           path: app/src/main/assets/model
-          key: deepseek-onnx-fixavd-${{ hashFiles('.github/workflows/build.yml') }}
-          restore-keys: deepseek-onnx-fixavd-
+          key: deepseek-onnx-avdfix-${{ hashFiles('.github/workflows/build.yml') }}
+          restore-keys: deepseek-onnx-avdfix-
 
       - name: Create model directory
         if: steps.cache-model.outputs.cache-hit != 'true'
@@ -97,28 +97,31 @@ jobs:
               os.rmdir("onnx")
           PYEOF
 
-      - name: Setup emulator and 10-turn test (No manual AVD)
+      - name: Setup emulator and 10-turn test (Fixed Path)
         timeout-minutes: 30
         run: |
-          # 安装所需组件
+          # 安装组件
           yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "platform-tools" "emulator" "system-images;android-29;google_apis;x86_64" 2>&1 | tail -3
 
           export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator:$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
+          # 设置 AVD 目录，匹配 avdmanager 的实际输出路径
+          export ANDROID_AVD_HOME="$HOME/.config/.android/avd"
+          mkdir -p "$ANDROID_AVD_HOME"
 
-          # 完全删除旧的 AVD
-          rm -rf ~/.android/avd/test_avd.avd ~/.android/avd/test_avd.ini ~/.config/.android/avd/test_avd.avd
+          # 删除旧 AVD
+          rm -rf "$ANDROID_AVD_HOME/test_avd.avd" "$ANDROID_AVD_HOME/test_avd.ini"
 
-          # 使用 avdmanager 自动创建，不手动干预
+          # 创建 AVD
           echo "no" | avdmanager create avd -n test_avd -k "system-images;android-29;google_apis;x86_64" -d "pixel" -f 2>&1
           echo "AVD list:"
-          avdmanager list avd
+          emulator -list-avds
 
           # 启动模拟器
-          $ANDROID_HOME/emulator/emulator -avd test_avd -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -netdelay none -netspeed full -no-snapshot -memory 1024 &
+          emulator -avd test_avd -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -netdelay none -netspeed full -no-snapshot -memory 1024 &
           EMULATOR_PID=$!
           echo "Emulator PID: $EMULATOR_PID"
 
-          # 等待设备就绪，并检测 emulator 进程是否存活
+          # 等待设备上线并检测进程
           echo "Waiting for device..."
           for i in $(seq 1 60); do
             if ! kill -0 $EMULATOR_PID 2>/dev/null; then
@@ -142,12 +145,12 @@ jobs:
           done
           sleep 5
 
-          # 解锁屏幕
+          # 解锁
           adb shell input keyevent 82
           adb shell wm dismiss-keyguard
           sleep 2
 
-          echo "Installing APK..."
+          # 安装
           adb install -g app/build/outputs/apk/debug/app-debug.apk
           adb shell pm grant com.eternal.ai android.permission.RECORD_AUDIO
           adb shell pm grant com.eternal.ai android.permission.CAMERA
