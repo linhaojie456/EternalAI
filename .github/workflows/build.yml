@@ -1,4 +1,4 @@
-name: Final Build with 10-Turn Validation
+name: Final Stable Build + 10-Turn Test
 on: [push, workflow_dispatch]
 env:
   ANDROID_HOME: /usr/local/lib/android/sdk
@@ -57,8 +57,8 @@ jobs:
         uses: actions/cache@v4
         with:
           path: app/src/main/assets/model
-          key: deepseek-onnx-finalv2-${{ hashFiles('.github/workflows/build.yml') }}
-          restore-keys: deepseek-onnx-finalv2-
+          key: deepseek-onnx-stable-${{ hashFiles('.github/workflows/build.yml') }}
+          restore-keys: deepseek-onnx-stable-
 
       - name: Create model directory
         if: steps.cache-model.outputs.cache-hit != 'true'
@@ -97,27 +97,55 @@ jobs:
               os.rmdir("onnx")
           PYEOF
 
-      - name: Setup emulator and run 10-turn test
-        timeout-minutes: 30
+      - name: Setup emulator and run 10-turn validation
+        timeout-minutes: 35
         run: |
+          # 确保 Android SDK 工具完整
+          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "platform-tools" "emulator" "system-images;android-29;google_apis;x86_64" 2>&1 | tail -5
+
           export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator:$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
-          # 安装系统映像
-          yes | sdkmanager "system-images;android-29;google_apis;x86_64"
-          echo "no" | avdmanager create avd -n test_avd -k "system-images;android-29;google_apis;x86_64" -d "pixel" -f
+
+          # 清理旧 AVD
+          rm -rf ~/.android/avd/test_avd.avd ~/.android/avd/test_avd.ini
+
+          # 创建 AVD，手动确保 ini 文件存在
+          echo "no" | avdmanager create avd -n test_avd -k "system-images;android-29;google_apis;x86_64" -d "pixel" -f 2>&1
+          if [ ! -f "$HOME/.android/avd/test_avd.ini" ]; then
+            echo "AVD ini missing, creating manually..."
+            mkdir -p "$HOME/.android/avd/test_avd.avd"
+            echo "avd.ini.encoding=UTF-8" > "$HOME/.android/avd/test_avd.ini"
+            echo "path=$HOME/.android/avd/test_avd.avd" >> "$HOME/.android/avd/test_avd.ini"
+            echo "target=android-29" >> "$HOME/.android/avd/test_avd.ini"
+            echo "abi.type=x86_64" > "$HOME/.android/avd/test_avd.avd/config.ini"
+            echo "image.sysdir.1=system-images/android-29/google_apis/x86_64/" >> "$HOME/.android/avd/test_avd.avd/config.ini"
+            echo "disk.dataPartition.size=2048M" >> "$HOME/.android/avd/test_avd.avd/config.ini"
+            echo "hw.lcd.density=240" >> "$HOME/.android/avd/test_avd.avd/config.ini"
+            echo "hw.lcd.height=1280" >> "$HOME/.android/avd/test_avd.avd/config.ini"
+            echo "hw.lcd.width=720" >> "$HOME/.android/avd/test_avd.avd/config.ini"
+            echo "hw.ramSize=1024" >> "$HOME/.android/avd/test_avd.avd/config.ini"
+            echo "showDeviceFrame=no" >> "$HOME/.android/avd/test_avd.avd/config.ini"
+          fi
+
+          # 验证 AVD
+          avdmanager list avd
+
           # 启动模拟器
+          echo "Starting emulator..."
           $ANDROID_HOME/emulator/emulator -avd test_avd -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -netdelay none -netspeed full -no-snapshot -memory 1024 &
           EMULATOR_PID=$!
+          echo "Emulator PID: $EMULATOR_PID"
 
-          echo "Waiting for device..."
+          # 等待设备就绪
           adb wait-for-device
           for i in $(seq 1 60); do
             if [ "$(adb shell getprop sys.boot_completed 2>/dev/null)" = "1" ]; then
               echo "Boot completed"
               break
             fi
+            echo "Waiting for boot... ($i)"
             sleep 5
           done
-          sleep 10
+          sleep 5
 
           # 解锁屏幕
           adb shell input keyevent 82
@@ -131,9 +159,9 @@ jobs:
           adb shell am start -n com.eternal.ai/.SplashActivity
           sleep 12
 
-          # 10轮对话测试
+          # 10 轮对话验证
           questions=("你好" "你是谁？" "1+1=？" "什么是爱？" "宇宙有多大？" "生命的意义" "今天天气" "写一首诗" "推荐一本书" "如何幸福")
-          success_count=0
+          success=0
           for q in "${questions[@]}"; do
             echo "Sending: $q"
             adb shell input tap 200 1800
@@ -142,22 +170,21 @@ jobs:
             sleep 0.5
             adb shell input tap 900 1800
             sleep 15
-
-            log=$(adb logcat -d | tail -30 | grep -i "永恒之神\|推理成功\|assistant" || true)
+            log=$(adb logcat -d | tail -50 | grep -i "永恒之神\|推理成功\|assistant" || true)
             if [ -n "$log" ]; then
               echo "Reply found for '$q'"
-              success_count=$((success_count + 1))
+              success=$((success + 1))
             else
               echo "No reply for '$q'"
             fi
           done
 
-          echo "Success count: $success_count/10"
-          if [ $success_count -lt 10 ]; then
-            echo "ERROR: Less than 10 replies detected"
+          echo "Success count: $success/10"
+          if [ $success -lt 10 ]; then
+            echo "ERROR: Less than 10 replies"
             exit 1
           fi
-          echo "All 10 dialogues verified!"
+          echo "All 10 replies verified!"
           kill $EMULATOR_PID || true
 
   build-arm64:
