@@ -1,4 +1,4 @@
-name: Final Optimized Build (Stable Emulator)
+name: Final Optimized Build (Manual Emulator)
 on: [push, workflow_dispatch]
 env:
   ANDROID_HOME: /usr/local/lib/android/sdk
@@ -54,8 +54,8 @@ jobs:
         uses: actions/cache@v4
         with:
           path: app/src/main/assets/model
-          key: deepseek-onnx-${{ hashFiles('.github/workflows/build.yml') }}
-          restore-keys: deepseek-onnx-
+          key: deepseek-onnx-v3-${{ hashFiles('.github/workflows/build.yml') }}
+          restore-keys: deepseek-onnx-v3-
       - name: Download model
         if: steps.cache-model.outputs.cache-hit != 'true'
         working-directory: app/src/main/assets/model
@@ -88,69 +88,66 @@ jobs:
               os.rename("onnx/model_quantized.onnx", "model.onnx")
               os.rmdir("onnx")
           PYEOF
-      - name: x86_64 Emulator Test (Stable)
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: 30
-          arch: x86_64
-          target: google_apis
-          ram-size: 2048M
-          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -netdelay none -netspeed full -no-snapshot-save -no-snapshot-load
-          disable-animations: true
-          force-avd-creation: false
-          script: |
-            echo "Waiting for device to be ready..."
-            # 增加重试机制，确保 adb 连接稳定
-            for i in $(seq 1 20); do
-              adb devices | grep "emulator-5554" | grep "device" && break
-              echo "Waiting for emulator... ($i)"
-              sleep 5
-            done
-            # 彻底重启 adb 服务，避免离线
-            adb kill-server
-            adb start-server
-            adb wait-for-device
-            sleep 10
+      - name: Manual Emulator Test
+        timeout-minutes: 25
+        run: |
+          export ANDROID_SDK_ROOT=$ANDROID_HOME
+          export PATH=$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator:$ANDROID_HOME/cmdline-tools/latest/bin:$PATH
 
-            # 尝试解锁屏幕并唤醒
-            adb shell input keyevent 82
-            adb shell wm dismiss-keyguard
-            sleep 3
+          echo "Installing system image..."
+          yes | sdkmanager "system-images;android-29;google_apis;x86_64"
+          echo "Creating AVD..."
+          echo "no" | avdmanager create avd -n test_avd -k "system-images;android-29;google_apis;x86_64" -d "pixel" -f
 
-            # 卸载旧版本
-            adb uninstall com.eternal.ai || true
-            echo "Installing APK..."
-            # 使用 -g 授予所有运行时权限
-            adb install -g app/build/outputs/apk/debug/app-debug.apk
-            # 额外授予危险权限
-            adb shell pm grant com.eternal.ai android.permission.RECORD_AUDIO
-            adb shell pm grant com.eternal.ai android.permission.CAMERA
-            adb shell pm grant com.eternal.ai android.permission.WRITE_EXTERNAL_STORAGE
-            adb shell pm grant com.eternal.ai android.permission.READ_EXTERNAL_STORAGE
+          echo "Starting emulator..."
+          $ANDROID_HOME/emulator/emulator -avd test_avd -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -netdelay none -netspeed full -no-snapshot -memory 1024 &
+          EMULATOR_PID=$!
+          echo "Emulator PID: $EMULATOR_PID"
 
-            # 启动应用
-            echo "Starting app..."
-            adb shell am start -n com.eternal.ai/.SplashActivity
-            sleep 12
-
-            # 模拟用户交互
-            echo "Simulating user interaction..."
-            adb shell input tap 200 1800
-            sleep 1
-            adb shell input text "你好"
-            sleep 1
-            adb shell input tap 900 1800
-            sleep 25
-
-            # 检查推理日志
-            echo "Checking logs..."
-            log=$(adb logcat -d | grep -i "永恒之神\|推理成功\|assistant" || true)
-            if [ -z "$log" ]; then
-              echo "ERROR: No inference reply detected"
-              exit 1
+          echo "Waiting for device..."
+          adb wait-for-device
+          for i in $(seq 1 60); do
+            boot_status=$(adb shell getprop sys.boot_completed 2>/dev/null)
+            if [ "$boot_status" = "1" ]; then
+              echo "Boot completed"
+              break
             fi
-            echo "Inference verified! Sample log:"
-            echo "$log"
+            echo "Waiting... ($i)"
+            sleep 5
+          done
+          sleep 10
+
+          adb shell input keyevent 82
+          adb shell wm dismiss-keyguard
+          sleep 2
+
+          echo "Installing APK..."
+          adb install -g app/build/outputs/apk/debug/app-debug.apk
+          adb shell pm grant com.eternal.ai android.permission.RECORD_AUDIO
+          adb shell pm grant com.eternal.ai android.permission.CAMERA
+
+          echo "Starting app..."
+          adb shell am start -n com.eternal.ai/.SplashActivity
+          sleep 12
+
+          echo "Simulating interaction..."
+          adb shell input tap 200 1800
+          sleep 1
+          adb shell input text "你好"
+          sleep 1
+          adb shell input tap 900 1800
+          sleep 25
+
+          echo "Checking logs..."
+          log=$(adb logcat -d | grep -i "永恒之神\|推理成功\|assistant" || true)
+          if [ -z "$log" ]; then
+            echo "ERROR: No inference reply"
+            exit 1
+          fi
+          echo "Inference verified! Log:"
+          echo "$log"
+
+          kill $EMULATOR_PID || true
   build-arm64:
     needs: test-emulator
     runs-on: ubuntu-latest
