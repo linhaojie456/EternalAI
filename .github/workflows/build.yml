@@ -1,4 +1,4 @@
-name: Final Build + 10-Turn Test (Enable KVM)
+name: Final Build + 10-Turn Test (Stable Input)
 on: [push, workflow_dispatch]
 env:
   ANDROID_HOME: /usr/local/lib/android/sdk
@@ -19,7 +19,7 @@ jobs:
         with:
           python-version: '3.10'
 
-      - name: Enable KVM permissions for emulator
+      - name: Enable KVM
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
@@ -64,8 +64,8 @@ jobs:
         uses: actions/cache@v4
         with:
           path: app/src/main/assets/model
-          key: deepseek-onnx-kvm-${{ hashFiles('.github/workflows/build.yml') }}
-          restore-keys: deepseek-onnx-kvm-
+          key: deepseek-onnx-stableinput-${{ hashFiles('.github/workflows/build.yml') }}
+          restore-keys: deepseek-onnx-stableinput-
 
       - name: Create model directory
         if: steps.cache-model.outputs.cache-hit != 'true'
@@ -104,39 +104,32 @@ jobs:
               os.rmdir("onnx")
           PYEOF
 
-      - name: Setup emulator and 10-turn test (KVM enabled)
+      - name: Setup emulator and 10-turn test (Stable Input)
         timeout-minutes: 30
         run: |
-          # 安装必要组件
+          # 安装模拟器组件
           yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "platform-tools" "emulator" "system-images;android-29;google_apis;x86_64" 2>&1 | tail -3
 
           export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator:$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
           export ANDROID_AVD_HOME="$HOME/.config/.android/avd"
           mkdir -p "$ANDROID_AVD_HOME"
 
-          # 清理旧 AVD
+          # 清理并创建 AVD
           rm -rf "$ANDROID_AVD_HOME/test_avd.avd" "$ANDROID_AVD_HOME/test_avd.ini"
-
-          # 创建 AVD
           echo "no" | avdmanager create avd -n test_avd -k "system-images;android-29;google_apis;x86_64" -d "pixel" -f 2>&1
-          echo "AVD list:"
-          emulator -list-avds
 
-          # 启动模拟器（KVM 已启用）
-          emulator -avd test_avd -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -netdelay none -netspeed full -no-snapshot -memory 1024 &
+          # 启动模拟器
+          $ANDROID_HOME/emulator/emulator -avd test_avd -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -netdelay none -netspeed full -no-snapshot -memory 1024 &
           EMULATOR_PID=$!
-          echo "Emulator PID: $EMULATOR_PID"
 
-          # 等待设备上线（最多等待 5 分钟）
+          # 等待设备
           echo "Waiting for device..."
           for i in $(seq 1 60); do
             if ! kill -0 $EMULATOR_PID 2>/dev/null; then
-              echo "Emulator process died!"
-              exit 1
+              echo "Emulator process died!"; exit 1
             fi
             if adb devices | grep -w "emulator-5554" | grep -q "device"; then
-              echo "Device detected"
-              break
+              echo "Device detected"; break
             fi
             sleep 5
           done
@@ -144,33 +137,56 @@ jobs:
           # 等待系统启动
           for i in $(seq 1 30); do
             if [ "$(adb shell getprop sys.boot_completed 2>/dev/null)" = "1" ]; then
-              echo "Boot completed"
-              break
+              echo "Boot completed"; break
             fi
             sleep 5
           done
           sleep 5
 
-          # 解锁屏幕
+          # 解锁屏幕并设置输入法（如果有）
           adb shell input keyevent 82
           adb shell wm dismiss-keyguard
           sleep 2
+          adb shell settings put secure show_ime_with_hard_keyboard 1
+          adb shell ime list -a | grep -q "com.android.inputmethod.latin" && adb shell ime enable com.android.inputmethod.latin/.LatinIME && adb shell ime set com.android.inputmethod.latin/.LatinIME || true
 
-          # 安装 APK
+          echo "Installing APK..."
           adb install -g app/build/outputs/apk/debug/app-debug.apk
           adb shell pm grant com.eternal.ai android.permission.RECORD_AUDIO
           adb shell pm grant com.eternal.ai android.permission.CAMERA
           adb shell am start -n com.eternal.ai/.SplashActivity
           sleep 12
 
-          # 10 轮对话测试
-          questions=("你好" "你是谁？" "1+1=？" "什么是爱？" "宇宙有多大？" "生命的意义" "今天天气" "写一首诗" "推荐一本书" "如何幸福")
+          # 基于 keyevent 的文本输入函数
+          adb_text() {
+            local str="$1"
+            for ((i=0; i<${#str}; i++)); do
+              char="${str:$i:1}"
+              case "$char" in
+                [a-z]) keycode=$(( 29 + $(printf '%d' "'$char") - 97 )) ;;  # a=29,b=30,...
+                [A-Z]) keycode=$(( 29 + $(printf '%d' "'$char") - 65 )) ;;  # A=29,B=30,...
+                [0-9]) keycode=$(( 7 + $(printf '%d' "'$char") - 48 )) ;;
+                ' ') keycode=62 ;;
+                '-') keycode=69 ;;
+                '.') keycode=56 ;;
+                '?') keycode=76 ;;
+                '!') keycode=75 ;;
+                *) keycode=0 ;; # 不处理其他字符
+              esac
+              if [ $keycode -ne 0 ]; then
+                adb shell input keyevent $keycode
+              fi
+            done
+          }
+
+          # 10 轮英文验证
+          questions=("hello" "who are you" "1+1" "what is love" "how big is the universe" "meaning of life" "weather today" "write a poem" "recommend a book" "how to be happy")
           success=0
           for q in "${questions[@]}"; do
             echo "Sending: $q"
             adb shell input tap 200 1800
             sleep 0.5
-            adb shell input text "$q"
+            adb_text "$q"
             sleep 0.5
             adb shell input tap 900 1800
             sleep 15
