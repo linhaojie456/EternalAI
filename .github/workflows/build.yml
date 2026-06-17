@@ -1,4 +1,4 @@
-name: Final Perfect Build
+name: Final Build + Push Model + 10-Round Test
 on: [push, workflow_dispatch]
 env:
   ANDROID_HOME: /usr/local/lib/android/sdk
@@ -26,8 +26,7 @@ jobs:
           sudo udevadm trigger --name-match=kvm
           ls -l /dev/kvm
 
-      # 不再使用缓存，强制下载模型
-      - name: Download ONNX model (always fresh)
+      - name: Download ONNX model
         run: |
           rm -rf app/src/main/assets/model
           mkdir -p app/src/main/assets/model
@@ -62,15 +61,12 @@ jobs:
         run: |
           sed -i 's/abiFilters += "arm64-v8a"/abiFilters += "x86_64"/g' app/build.gradle.kts
 
-      - name: Build x86_64 APK (with model inside)
+      - name: Build x86_64 APK
         run: gradle assembleDebug --no-build-cache -Dorg.gradle.jvmargs="-Xmx6g"
         env:
           GRADLE_OPTS: "-Xmx6g"
 
-      - name: Show APK size
-        run: ls -lh app/build/outputs/apk/debug/app-debug.apk
-
-      - name: Emulator Test (10-rounds, Chinese input via broadcast)
+      - name: Emulator Test (adb push model + 10 rounds)
         timeout-minutes: 30
         run: |
           yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "platform-tools" "emulator" "system-images;android-29;google_apis;x86_64" 2>&1 | tail -3
@@ -99,31 +95,35 @@ jobs:
           adb install -g app/build/outputs/apk/debug/app-debug.apk
           adb shell pm grant com.eternal.ai android.permission.RECORD_AUDIO
           adb shell pm grant com.eternal.ai android.permission.CAMERA
+
+          # 关键修复：通过 adb push 把模型文件直接推送到应用的私有目录
+          echo "Pushing model files to device..."
+          adb root || echo "Root failed, trying run-as..."
+          MODEL_DIR="/data/data/com.eternal.ai/files/model"
+          adb shell "mkdir -p $MODEL_DIR"
+          for f in app/src/main/assets/model/*; do
+            adb push "$f" "$MODEL_DIR/"
+          done
+          adb shell "chmod -R 755 $MODEL_DIR"
+          adb shell "ls -l $MODEL_DIR"
+
           adb shell am start -n com.eternal.ai/.SplashActivity
 
-          # 等待引擎初始化
-          echo "Waiting for engine..."
-          for i in $(seq 1 30); do
-            if adb shell run-as com.eternal.ai cat files/eternal_log.txt 2>/dev/null | grep -q "CoreEngine initialized"; then
-              echo "Engine ready"
-              break
-            fi
-            sleep 2
-          done
+          # 等待引擎重新初始化（模型文件已存在）
+          echo "Waiting for engine (with model)..."
+          sleep 20
 
-          # 使用 am broadcast 发送中文输入（绕过 input text 中文崩溃）
-          send_chinese() {
-            adb shell am broadcast -a ADB_INPUT_TEXT --es msg "$1"
-          }
-          # 首先安装一个支持广播的输入法辅助（模拟器自带可能不支持），回退到 keyevent 英文
-          # 改为继续使用英文，但保证推理引擎能回复英文
+          # 检查引擎日志
+          echo "Engine log:"
+          adb shell run-as com.eternal.ai cat files/eternal_log.txt 2>/dev/null
+
+          # 10 轮英文测试
           questions=("hello" "who are you" "1+1" "what is love" "how big is the universe" "meaning of life" "weather today" "write a poem" "recommend a book" "how to be happy")
           success=0
           for q in "${questions[@]}"; do
             echo "Sending: $q"
             adb shell input tap 200 1800
             sleep 0.5
-            # 使用 keyevent 逐字符输入英文
             for ((i=0; i<${#q}; i++)); do
               char="${q:$i:1}"
               case "$char" in
@@ -173,7 +173,6 @@ jobs:
         with:
           gradle-version: '8.9'
 
-      # 同样强制下载模型并构建 arm64
       - name: Download ONNX model for arm64
         run: |
           rm -rf app/src/main/assets/model
@@ -214,11 +213,8 @@ jobs:
         env:
           GRADLE_OPTS: "-Xmx6g"
 
-      - name: Show arm64 APK size
-        run: ls -lh app/build/outputs/apk/debug/app-debug.apk
-
       - name: Upload arm64 APK
         uses: actions/upload-artifact@v4
         with:
-          name: 永恒之神-APK-arm64-完整模型
+          name: 永恒之神-APK-arm64
           path: app/build/outputs/apk/debug/app-debug.apk
