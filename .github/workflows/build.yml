@@ -28,31 +28,6 @@ jobs:
 
       - name: Prepare x86_64 build
         run: |
-          # VideoScreen 不需要改动
-          cat > app/src/main/java/com/eternal/ai/VideoScreen.kt << 'VEOF'
-          package com.eternal.ai
-          import androidx.compose.foundation.background
-          import androidx.compose.foundation.layout.*
-          import androidx.compose.material3.*
-          import androidx.compose.runtime.*
-          import androidx.compose.ui.Alignment
-          import androidx.compose.ui.Modifier
-          import androidx.compose.ui.text.font.FontWeight
-          import androidx.compose.ui.unit.dp
-          import androidx.compose.ui.unit.sp
-          @Composable
-          fun VideoScreen() {
-              Box(modifier = Modifier.fillMaxSize().background(NeoChineseColors.InkBlack), contentAlignment = Alignment.Center) {
-                  Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                      Text("📹 神域洞察", color = NeoChineseColors.SkyBlue, fontSize = 24.sp, fontWeight = FontWeight.Bold)
-                      Spacer(modifier = Modifier.height(16.dp))
-                      Text("摄像头功能开发中", color = NeoChineseColors.RicePaper, fontSize = 14.sp)
-                      Spacer(modifier = Modifier.height(8.dp))
-                      Text("神念所至，万物皆现", color = NeoChineseColors.Gray, fontSize = 12.sp)
-                  }
-              }
-          }
-          VEOF
           sed -i 's/abiFilters += "arm64-v8a"/abiFilters += "x86_64"/g' app/build.gradle.kts
 
       - name: Build x86_64 APK
@@ -65,8 +40,8 @@ jobs:
         uses: actions/cache@v4
         with:
           path: app/src/main/assets/model
-          key: deepseek-onnx-crashfix-${{ hashFiles('.github/workflows/build.yml') }}
-          restore-keys: deepseek-onnx-crashfix-
+          key: deepseek-onnx-fixv3-${{ hashFiles('.github/workflows/build.yml') }}
+          restore-keys: deepseek-onnx-fixv3-
 
       - name: Create model directory
         if: steps.cache-model.outputs.cache-hit != 'true'
@@ -105,7 +80,7 @@ jobs:
               os.rmdir("onnx")
           PYEOF
 
-      - name: Emulator Test (with crash fix)
+      - name: Emulator Test
         timeout-minutes: 30
         run: |
           yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "platform-tools" "emulator" "system-images;android-29;google_apis;x86_64" 2>&1 | tail -3
@@ -136,9 +111,8 @@ jobs:
           adb shell pm grant com.eternal.ai android.permission.CAMERA
           adb shell am start -n com.eternal.ai/.SplashActivity
           
-          # 等待引擎初始化（最多40秒）
           echo "Waiting for engine initialization..."
-          for i in $(seq 1 20); do
+          for i in $(seq 1 30); do
             if adb shell run-as com.eternal.ai cat files/eternal_log.txt 2>/dev/null | grep -q "CoreEngine initialized"; then
               echo "Engine initialized"
               break
@@ -146,13 +120,10 @@ jobs:
             sleep 2
           done
           
-          # 诊断
-          echo "=== Log file ==="
+          echo "=== Diagnostic ==="
           adb shell run-as com.eternal.ai cat files/eternal_log.txt 2>/dev/null || echo "No log"
-          echo "=== Model files ==="
-          adb shell run-as com.eternal.ai ls -l files/model/ 2>/dev/null || echo "No model dir"
+          adb shell run-as com.eternal.ai ls -l files/model/ 2>/dev/null || echo "No model"
           
-          # 发送消息测试
           adb_text() {
             local str="$1"
             for ((i=0; i<${#str}; i++)); do
@@ -176,13 +147,12 @@ jobs:
           adb shell input tap 900 1800
           sleep 20
 
-          echo "=== Logcat after interaction ==="
-          adb logcat -d | grep -i "永恒之神\|推理\|eternal" | tail -30
+          echo "=== Logcat ==="
+          adb logcat -d | grep -i "永恒之神\|推理\|eternal\|CoreEngine" | tail -30
           
           kill $EMULATOR_PID || true
-          # 暂时不要求成功，先查看日志
           exit 0
-          
+
   build-arm64:
     needs: test-emulator
     runs-on: ubuntu-latest

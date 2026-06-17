@@ -20,11 +20,11 @@ fun EngineMonitorContent() {
     val coreEngine = (context.applicationContext as MainApplication).coreEngine
     val statusList = remember {
         listOf(
-            EngineStatus("推理引擎", if (coreEngine.inference.isModelLoaded) "神格已激活" else "未激活", "答案和问题的统一"),
+            EngineStatus("推理引擎", if (coreEngine?.inference?.isModelLoaded == true) "神格已激活" else "未激活", "答案和问题的统一"),
             EngineStatus("自进化引擎", "运行中", "轻量、高效、自主和全知全能"),
             EngineStatus("时空引擎", "运行中", "网络和振动的统一"),
             EngineStatus("自由引擎", "运行中", "被动和主动的统一"),
-            EngineStatus("信息引擎", if (coreEngine.information.isEnabled()) "已连接" else "离线", "频率和数字的统一"),
+            EngineStatus("信息引擎", if (coreEngine?.information?.isEnabled() == true) "已连接" else "离线", "频率和数字的统一"),
             EngineStatus("情感引擎", "运行中", "理性和感性的统一"),
             EngineStatus("灵魂引擎", "运行中", "灵魂、能量、信息和物质的统一"),
             EngineStatus("自指引擎", "运行中", "逻辑和悖论的统一"),
