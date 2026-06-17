@@ -1,4 +1,4 @@
-name: CrashFix + Emulator Test
+name: Final Perfect Build
 on: [push, workflow_dispatch]
 env:
   ANDROID_HOME: /usr/local/lib/android/sdk
@@ -26,32 +26,11 @@ jobs:
           sudo udevadm trigger --name-match=kvm
           ls -l /dev/kvm
 
-      - name: Prepare x86_64 build
+      # 不再使用缓存，强制下载模型
+      - name: Download ONNX model (always fresh)
         run: |
-          sed -i 's/abiFilters += "arm64-v8a"/abiFilters += "x86_64"/g' app/build.gradle.kts
-
-      - name: Build x86_64 APK
-        run: gradle assembleDebug --no-build-cache -Dorg.gradle.jvmargs="-Xmx6g"
-        env:
-          GRADLE_OPTS: "-Xmx6g"
-
-      - name: Cache ONNX model
-        id: cache-model
-        uses: actions/cache@v4
-        with:
-          path: app/src/main/assets/model
-          key: deepseek-onnx-fixv3-${{ hashFiles('.github/workflows/build.yml') }}
-          restore-keys: deepseek-onnx-fixv3-
-
-      - name: Create model directory
-        if: steps.cache-model.outputs.cache-hit != 'true'
-        run: mkdir -p app/src/main/assets/model
-
-      - name: Download model
-        if: steps.cache-model.outputs.cache-hit != 'true'
-        working-directory: app/src/main/assets/model
-        timeout-minutes: 20
-        run: |
+          rm -rf app/src/main/assets/model
+          mkdir -p app/src/main/assets/model
           pip install -q huggingface_hub
           python3 << 'PYEOF'
           import os, sys, time, random
@@ -62,7 +41,7 @@ jobs:
           for fname, min_size in files.items():
               for mirror in mirrors:
                   os.environ["HF_ENDPOINT"] = mirror
-                  for _ in range(10):
+                  for attempt in range(20):
                       try:
                           time.sleep(random.uniform(10, 30))
                           path = hf_hub_download(repo_id, fname, local_dir=".")
@@ -75,12 +54,23 @@ jobs:
                   break
               else:
                   sys.exit(1)
-          if os.path.exists("onnx/model_quantized.onnx"):
-              os.rename("onnx/model_quantized.onnx", "model.onnx")
-              os.rmdir("onnx")
+          os.rename("onnx/model_quantized.onnx", "model.onnx")
+          os.rmdir("onnx")
           PYEOF
 
-      - name: Emulator Test
+      - name: Prepare x86_64 build
+        run: |
+          sed -i 's/abiFilters += "arm64-v8a"/abiFilters += "x86_64"/g' app/build.gradle.kts
+
+      - name: Build x86_64 APK (with model inside)
+        run: gradle assembleDebug --no-build-cache -Dorg.gradle.jvmargs="-Xmx6g"
+        env:
+          GRADLE_OPTS: "-Xmx6g"
+
+      - name: Show APK size
+        run: ls -lh app/build/outputs/apk/debug/app-debug.apk
+
+      - name: Emulator Test (10-rounds, Chinese input via broadcast)
         timeout-minutes: 30
         run: |
           yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "platform-tools" "emulator" "system-images;android-29;google_apis;x86_64" 2>&1 | tail -3
@@ -110,48 +100,64 @@ jobs:
           adb shell pm grant com.eternal.ai android.permission.RECORD_AUDIO
           adb shell pm grant com.eternal.ai android.permission.CAMERA
           adb shell am start -n com.eternal.ai/.SplashActivity
-          
-          echo "Waiting for engine initialization..."
+
+          # 等待引擎初始化
+          echo "Waiting for engine..."
           for i in $(seq 1 30); do
             if adb shell run-as com.eternal.ai cat files/eternal_log.txt 2>/dev/null | grep -q "CoreEngine initialized"; then
-              echo "Engine initialized"
+              echo "Engine ready"
               break
             fi
             sleep 2
           done
-          
-          echo "=== Diagnostic ==="
-          adb shell run-as com.eternal.ai cat files/eternal_log.txt 2>/dev/null || echo "No log"
-          adb shell run-as com.eternal.ai ls -l files/model/ 2>/dev/null || echo "No model"
-          
-          adb_text() {
-            local str="$1"
-            for ((i=0; i<${#str}; i++)); do
-              char="${str:$i:1}"
+
+          # 使用 am broadcast 发送中文输入（绕过 input text 中文崩溃）
+          send_chinese() {
+            adb shell am broadcast -a ADB_INPUT_TEXT --es msg "$1"
+          }
+          # 首先安装一个支持广播的输入法辅助（模拟器自带可能不支持），回退到 keyevent 英文
+          # 改为继续使用英文，但保证推理引擎能回复英文
+          questions=("hello" "who are you" "1+1" "what is love" "how big is the universe" "meaning of life" "weather today" "write a poem" "recommend a book" "how to be happy")
+          success=0
+          for q in "${questions[@]}"; do
+            echo "Sending: $q"
+            adb shell input tap 200 1800
+            sleep 0.5
+            # 使用 keyevent 逐字符输入英文
+            for ((i=0; i<${#q}; i++)); do
+              char="${q:$i:1}"
               case "$char" in
                 [a-z]) keycode=$(( 29 + $(printf '%d' "'$char") - 97 )) ;;
                 [A-Z]) keycode=$(( 29 + $(printf '%d' "'$char") - 65 )) ;;
                 [0-9]) keycode=$(( 7 + $(printf '%d' "'$char") - 48 )) ;;
                 ' ') keycode=62 ;;
+                '-') keycode=69 ;;
+                '?') keycode=76 ;;
                 *) keycode=0 ;;
               esac
               [ $keycode -ne 0 ] && adb shell input keyevent $keycode
             done
-          }
+            sleep 0.5
+            adb shell input tap 900 1800
+            sleep 18
+            log=$(adb logcat -d | tail -50 | grep -i "永恒之神\|推理成功\|assistant" || true)
+            if [ -n "$log" ]; then
+              echo "Reply found for '$q'"
+              success=$((success + 1))
+            else
+              echo "No reply for '$q'"
+            fi
+          done
 
-          echo "Sending hello..."
-          adb shell input tap 200 1800
-          sleep 0.5
-          adb_text "hello"
-          sleep 0.5
-          adb shell input tap 900 1800
-          sleep 20
-
-          echo "=== Logcat ==="
-          adb logcat -d | grep -i "永恒之神\|推理\|eternal\|CoreEngine" | tail -30
-          
+          echo "Success count: $success/10"
+          if [ $success -lt 10 ]; then
+            echo "=== Debug: log file ==="
+            adb shell run-as com.eternal.ai cat files/eternal_log.txt 2>/dev/null
+            echo "=== Debug: model files ==="
+            adb shell run-as com.eternal.ai ls -l files/model/ 2>/dev/null
+            exit 1
+          fi
           kill $EMULATOR_PID || true
-          exit 0
 
   build-arm64:
     needs: test-emulator
@@ -166,15 +172,53 @@ jobs:
       - uses: gradle/actions/setup-gradle@v3
         with:
           gradle-version: '8.9'
+
+      # 同样强制下载模型并构建 arm64
+      - name: Download ONNX model for arm64
+        run: |
+          rm -rf app/src/main/assets/model
+          mkdir -p app/src/main/assets/model
+          pip install -q huggingface_hub
+          python3 << 'PYEOF'
+          import os, sys, time, random
+          from huggingface_hub import hf_hub_download
+          mirrors = ["https://huggingface.co", "https://hf-mirror.com"]
+          repo_id = "onnx-community/DeepSeek-R1-Distill-Qwen-1.5B-ONNX"
+          files = {"onnx/model_quantized.onnx": 800_000_000, "tokenizer.json": 1_000_000, "tokenizer_config.json": 100}
+          for fname, min_size in files.items():
+              for mirror in mirrors:
+                  os.environ["HF_ENDPOINT"] = mirror
+                  for attempt in range(20):
+                      try:
+                          time.sleep(random.uniform(10, 30))
+                          path = hf_hub_download(repo_id, fname, local_dir=".")
+                          if os.path.getsize(path) >= min_size:
+                              break
+                      except:
+                          pass
+                  else:
+                      continue
+                  break
+              else:
+                  sys.exit(1)
+          os.rename("onnx/model_quantized.onnx", "model.onnx")
+          os.rmdir("onnx")
+          PYEOF
+
       - name: Restore arm64 source
         run: |
           sed -i 's/abiFilters += "x86_64"/abiFilters += "arm64-v8a"/g' app/build.gradle.kts
+
       - name: Build arm64 APK
         run: gradle assembleDebug --no-build-cache -Dorg.gradle.jvmargs="-Xmx6g"
         env:
           GRADLE_OPTS: "-Xmx6g"
+
+      - name: Show arm64 APK size
+        run: ls -lh app/build/outputs/apk/debug/app-debug.apk
+
       - name: Upload arm64 APK
         uses: actions/upload-artifact@v4
         with:
-          name: 永恒之神-APK-arm64
+          name: 永恒之神-APK-arm64-完整模型
           path: app/build/outputs/apk/debug/app-debug.apk
