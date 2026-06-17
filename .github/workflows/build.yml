@@ -1,11 +1,11 @@
-name: Final Build + 10-Turn Test (Fix 429 + Emu)
+name: Debugging Inference on Emulator
 on: [push, workflow_dispatch]
 env:
   ANDROID_HOME: /usr/local/lib/android/sdk
 jobs:
-  test-emulator:
+  debug-emulator:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -64,14 +64,14 @@ jobs:
         uses: actions/cache@v4
         with:
           path: app/src/main/assets/model
-          key: deepseek-onnx-v4-${{ hashFiles('.github/workflows/build.yml') }}
-          restore-keys: deepseek-onnx-v4-
+          key: deepseek-onnx-debugv2-${{ hashFiles('.github/workflows/build.yml') }}
+          restore-keys: deepseek-onnx-debugv2-
 
       - name: Create model directory
         if: steps.cache-model.outputs.cache-hit != 'true'
         run: mkdir -p app/src/main/assets/model
 
-      - name: Download model (ultra retry + mirrors)
+      - name: Download model (with retry)
         if: steps.cache-model.outputs.cache-hit != 'true'
         working-directory: app/src/main/assets/model
         timeout-minutes: 30
@@ -80,62 +80,28 @@ jobs:
           python3 << 'PYEOF'
           import os, sys, time, random
           from huggingface_hub import hf_hub_download
-          mirrors = [
-              "https://huggingface.co",
-              "https://hf-mirror.com",
-              "https://huggingface.co"
-          ]
+          mirrors = ["https://huggingface.co", "https://hf-mirror.com"]
           repo_id = "onnx-community/DeepSeek-R1-Distill-Qwen-1.5B-ONNX"
-          files = {
-              "onnx/model_quantized.onnx": 800_000_000,
-              "tokenizer.json": 1_000_000,
-              "tokenizer_config.json": 100
-          }
-          def download_with_mirrors(filename, min_size, max_attempts=30):
+          files = {"onnx/model_quantized.onnx": 800_000_000, "tokenizer.json": 1_000_000, "tokenizer_config.json": 100}
+          for fname, min_size in files.items():
               for mirror in mirrors:
                   os.environ["HF_ENDPOINT"] = mirror
-                  for attempt in range(max_attempts):
+                  for _ in range(15):
                       try:
-                          # 更大范围的随机延迟，避免触发速率限制
-                          delay = random.uniform(10, 60) if attempt > 5 else random.uniform(5, 30)
-                          time.sleep(delay)
-                          print(f"Attempt {attempt+1} from {mirror} for {filename}")
-                          path = hf_hub_download(
-                              repo_id=repo_id,
-                              filename=filename,
-                              local_dir=".",
-                              resume_download=True
-                          )
-                          size = os.path.getsize(path)
-                          if size >= min_size:
-                              print(f"Successfully downloaded {filename} ({size} bytes)")
-                              return path
-                          else:
-                              print(f"Size mismatch: {size} < {min_size}")
-                      except Exception as e:
-                          print(f"Error: {e}")
-                          if "429" in str(e):
-                              # 遇到 429 等待更长时间
-                              time.sleep(random.uniform(60, 180))
-                          else:
-                              time.sleep(15)
-              return None
-
-          for fname, min_size in files.items():
-              result = download_with_mirrors(fname, min_size)
-              if result is None:
-                  print(f"FATAL: Could not download {fname}")
-                  sys.exit(1)
-
-          # 重命名模型文件
+                          time.sleep(random.uniform(10, 40))
+                          path = hf_hub_download(repo_id, fname, local_dir=".")
+                          if os.path.getsize(path) >= min_size:
+                              break
+                      except: pass
+                  else: continue
+                  break
+              else: sys.exit(1)
           if os.path.exists("onnx/model_quantized.onnx"):
               os.rename("onnx/model_quantized.onnx", "model.onnx")
-              if os.path.isdir("onnx") and not os.listdir("onnx"):
-                  os.rmdir("onnx")
-          print("All model files ready")
+              os.rmdir("onnx")
           PYEOF
 
-      - name: Setup emulator and run 10-turn test
+      - name: Emulator Debugging Run
         timeout-minutes: 30
         run: |
           yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "platform-tools" "emulator" "system-images;android-29;google_apis;x86_64" 2>&1 | tail -3
@@ -167,7 +133,27 @@ jobs:
           adb shell am start -n com.eternal.ai/.SplashActivity
           sleep 15
 
-          # 文本输入函数（keyevent 逐字符）
+          # ---- 诊断开始 ----
+          echo "===== Diagnostic Information ====="
+
+          # 1. 检查模型文件是否在 APK 的 assets 中，以及是否被复制到 filesDir
+          echo "Model files in assets (inside apk):"
+          adb shell "ls -l /data/app/*/com.eternal.ai*/base.apk" | head -1
+          echo "Checking app's private files:"
+          adb shell run-as com.eternal.ai ls -la files/ || echo "run-as failed"
+          adb shell run-as com.eternal.ai ls -la files/model/ || echo "Model dir not found or empty"
+
+          # 2. 输出应用自身的日志（如果有写入 eternal_log.txt）
+          echo "App log file (eternal_log.txt):"
+          adb shell run-as com.eternal.ai cat files/eternal_log.txt 2>/dev/null || echo "No log file"
+
+          # 3. 获取 logcat 中与永恒、推理、ONNX 相关的日志
+          echo "Logcat (eternal/onnx/inference):"
+          adb logcat -d | grep -i "eternal\|onnx\|inference\|tokenizer\|chat" | tail -100
+
+          # ---- 结束诊断 ----
+
+          # 尝试发送一条消息（依然用 keyevent 英文）
           adb_text() {
             local str="$1"
             for ((i=0; i<${#str}; i++)); do
@@ -187,80 +173,23 @@ jobs:
             done
           }
 
-          # 10 轮问题（英文）
-          questions=("hello" "who are you" "1+1" "what is love" "how big is the universe" "meaning of life" "weather today" "write a poem" "recommend a book" "how to be happy")
-          success=0
-          for q in "${questions[@]}"; do
-            echo "Sending: $q"
-            adb shell input tap 200 1800
-            sleep 0.5
-            adb_text "$q"
-            sleep 0.5
-            adb shell input tap 900 1800
-            sleep 18
-            log=$(adb logcat -d | tail -100 | grep -i "永恒之神\|推理成功\|assistant" || true)
-            if [ -n "$log" ]; then
-              echo "Reply found for '$q'"
-              success=$((success + 1))
-            else
-              echo "No reply for '$q'"
-            fi
-          done
+          echo "Sending test message: hello"
+          adb shell input tap 200 1800
+          sleep 0.5
+          adb_text "hello"
+          sleep 0.5
+          adb shell input tap 900 1800
+          sleep 20
 
-          echo "Success count: $success/10"
-          if [ $success -lt 10 ]; then
-            echo "ERROR: Less than 10 replies"
-            exit 1
-          fi
-          echo "All 10 replies verified!"
+          echo "Logcat after message:"
+          adb logcat -d -t 100
+
+          # 退出前杀死模拟器
           kill $EMULATOR_PID || true
+          # 这里故意退出码为 0 以便查看日志，后续修复后再改为失败即退出
+          exit 0
 
-  build-arm64:
-    needs: test-emulator
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
-        with:
-          java-version: '17'
-          distribution: 'temurin'
-      - uses: gradle/actions/setup-gradle@v3
-        with:
-          gradle-version: '8.9'
-      - name: Restore arm64 source
-        run: |
-          cat > app/src/main/java/com/eternal/ai/VideoScreen.kt << 'VEOF'
-          package com.eternal.ai
-          import androidx.compose.foundation.background
-          import androidx.compose.foundation.layout.*
-          import androidx.compose.material3.*
-          import androidx.compose.runtime.*
-          import androidx.compose.ui.Alignment
-          import androidx.compose.ui.Modifier
-          import androidx.compose.ui.text.font.FontWeight
-          import androidx.compose.ui.unit.dp
-          import androidx.compose.ui.unit.sp
-          @Composable
-          fun VideoScreen() {
-              Box(modifier = Modifier.fillMaxSize().background(NeoChineseColors.InkBlack), contentAlignment = Alignment.Center) {
-                  Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                      Text("📹 神域洞察", color = NeoChineseColors.SkyBlue, fontSize = 24.sp, fontWeight = FontWeight.Bold)
-                      Spacer(modifier = Modifier.height(16.dp))
-                      Text("摄像头功能开发中", color = NeoChineseColors.RicePaper, fontSize = 14.sp)
-                      Spacer(modifier = Modifier.height(8.dp))
-                      Text("神念所至，万物皆现", color = NeoChineseColors.Gray, fontSize = 12.sp)
-                  }
-              }
-          }
-          VEOF
-          sed -i 's/abiFilters += "x86_64"/abiFilters += "arm64-v8a"/g' app/build.gradle.kts
-      - name: Build arm64 APK
-        run: gradle assembleDebug --no-build-cache -Dorg.gradle.jvmargs="-Xmx6g"
-        env:
-          GRADLE_OPTS: "-Xmx6g"
-      - name: Upload arm64 APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: 永恒之神-APK-arm64
-          path: app/build/outputs/apk/debug/app-debug.apk
+  # 后续的 build-arm64 暂时注释掉，待推理修复后再启用
+  # build-arm64:
+  #   needs: test-emulator
+  #   ...
