@@ -4,14 +4,14 @@ import android.content.Intent
 import android.content.res.AssetManager
 import com.chaquo.python.Python
 import com.chaquo.python.android.AndroidPlatform
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
 import java.io.File
 import java.io.FileOutputStream
+import java.util.concurrent.CountDownLatch
 
 class MainApplication : Application() {
-    lateinit var coreEngine: CoreEngine
+    var coreEngine: CoreEngine? = null
+        private set
+    private val initLatch = CountDownLatch(1)
 
     override fun onCreate() {
         super.onCreate()
@@ -25,19 +25,39 @@ class MainApplication : Application() {
             defaultHandler?.uncaughtException(t, e)
         }
 
-        // 异步加载模型文件和初始化引擎
-        val appScope = CoroutineScope(Dispatchers.IO)
-        appScope.launch {
-            try { System.loadLibrary("onnxruntime") } catch (_: UnsatisfiedLinkError) {}
-            try { if (!Python.isStarted()) Python.start(AndroidPlatform(this@MainApplication)) } catch (e: Exception) {}
-            try { copyAssetsIfNeeded() } catch (_: Exception) {}
-            coreEngine = CoreEngine(this@MainApplication)
-            val intent = Intent(this@MainApplication, EternalService::class.java)
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O)
-                startForegroundService(intent)
-            else
-                startService(intent)
-        }
+        Thread {
+            try {
+                // 复制模型文件
+                copyAssetsIfNeeded()
+                // 初始化 ONNX Runtime
+                try { System.loadLibrary("onnxruntime") } catch (_: Exception) {}
+                // 启动 Python
+                try {
+                    if (!Python.isStarted()) Python.start(AndroidPlatform(this))
+                } catch (e: Exception) {
+                    writeLog("Python start failed: ${e.message}")
+                }
+                // 创建核心引擎
+                coreEngine = CoreEngine(this)
+                writeLog("CoreEngine initialized successfully")
+            } catch (e: Exception) {
+                writeLog("CoreEngine initialization failed: ${e.message}")
+                // 即使失败也要让应用能启动，创建一个最小引擎
+                coreEngine = CoreEngine(this)
+            } finally {
+                initLatch.countDown()
+                // 启动后台服务
+                val intent = Intent(this, EternalService::class.java)
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O)
+                    startForegroundService(intent)
+                else
+                    startService(intent)
+            }
+        }.start()
+    }
+
+    fun waitForEngineReady() {
+        try { initLatch.await() } catch (_: Exception) {}
     }
 
     private fun copyAssetsIfNeeded() {
@@ -45,6 +65,9 @@ class MainApplication : Application() {
         if (!modelDir.exists() || modelDir.list()?.isEmpty() == true) {
             modelDir.mkdirs()
             copyAssets("model", modelDir)
+            writeLog("Model assets copied to ${modelDir.absolutePath}")
+        } else {
+            writeLog("Model directory already exists")
         }
     }
 
@@ -58,7 +81,16 @@ class MainApplication : Application() {
                         input.copyTo(output)
                     }
                 }
-            } catch (_: Exception) {}
+            } catch (e: Exception) {
+                writeLog("Copy asset $filename failed: ${e.message}")
+            }
         }
+    }
+
+    private fun writeLog(msg: String) {
+        try {
+            val logFile = File(filesDir, "eternal_log.txt")
+            FileWriter(logFile, true).use { it.append("${System.currentTimeMillis()}: $msg\n") }
+        } catch (_: Exception) {}
     }
 }

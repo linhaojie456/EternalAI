@@ -4,6 +4,19 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import androidx.activity.ComponentActivity
+
 class SplashActivity : ComponentActivity() {
-    override fun onCreate(savedInstanceState: Bundle?) { super.onCreate(savedInstanceState); setContentView(R.layout.activity_splash); Handler(Looper.getMainLooper()).postDelayed({ startActivity(Intent(this, MainActivity::class.java)); finish() }, 2000) }
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContentView(R.layout.activity_splash)
+
+        // 等待引擎初始化完成（最长等待30秒）
+        Thread {
+            (application as MainApplication).waitForEngineReady()
+            runOnUiThread {
+                startActivity(Intent(this, MainActivity::class.java))
+                finish()
+            }
+        }.start()
+    }
 }

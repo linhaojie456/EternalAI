@@ -1,11 +1,11 @@
-name: Debugging Inference on Emulator
+name: CrashFix + Emulator Test
 on: [push, workflow_dispatch]
 env:
   ANDROID_HOME: /usr/local/lib/android/sdk
 jobs:
-  debug-emulator:
+  test-emulator:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -28,6 +28,7 @@ jobs:
 
       - name: Prepare x86_64 build
         run: |
+          # VideoScreen 不需要改动
           cat > app/src/main/java/com/eternal/ai/VideoScreen.kt << 'VEOF'
           package com.eternal.ai
           import androidx.compose.foundation.background
@@ -64,17 +65,17 @@ jobs:
         uses: actions/cache@v4
         with:
           path: app/src/main/assets/model
-          key: deepseek-onnx-debugv2-${{ hashFiles('.github/workflows/build.yml') }}
-          restore-keys: deepseek-onnx-debugv2-
+          key: deepseek-onnx-crashfix-${{ hashFiles('.github/workflows/build.yml') }}
+          restore-keys: deepseek-onnx-crashfix-
 
       - name: Create model directory
         if: steps.cache-model.outputs.cache-hit != 'true'
         run: mkdir -p app/src/main/assets/model
 
-      - name: Download model (with retry)
+      - name: Download model
         if: steps.cache-model.outputs.cache-hit != 'true'
         working-directory: app/src/main/assets/model
-        timeout-minutes: 30
+        timeout-minutes: 20
         run: |
           pip install -q huggingface_hub
           python3 << 'PYEOF'
@@ -86,22 +87,25 @@ jobs:
           for fname, min_size in files.items():
               for mirror in mirrors:
                   os.environ["HF_ENDPOINT"] = mirror
-                  for _ in range(15):
+                  for _ in range(10):
                       try:
-                          time.sleep(random.uniform(10, 40))
+                          time.sleep(random.uniform(10, 30))
                           path = hf_hub_download(repo_id, fname, local_dir=".")
                           if os.path.getsize(path) >= min_size:
                               break
-                      except: pass
-                  else: continue
+                      except:
+                          pass
+                  else:
+                      continue
                   break
-              else: sys.exit(1)
+              else:
+                  sys.exit(1)
           if os.path.exists("onnx/model_quantized.onnx"):
               os.rename("onnx/model_quantized.onnx", "model.onnx")
               os.rmdir("onnx")
           PYEOF
 
-      - name: Emulator Debugging Run
+      - name: Emulator Test (with crash fix)
         timeout-minutes: 30
         run: |
           yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "platform-tools" "emulator" "system-images;android-29;google_apis;x86_64" 2>&1 | tail -3
@@ -131,29 +135,24 @@ jobs:
           adb shell pm grant com.eternal.ai android.permission.RECORD_AUDIO
           adb shell pm grant com.eternal.ai android.permission.CAMERA
           adb shell am start -n com.eternal.ai/.SplashActivity
-          sleep 15
-
-          # ---- 诊断开始 ----
-          echo "===== Diagnostic Information ====="
-
-          # 1. 检查模型文件是否在 APK 的 assets 中，以及是否被复制到 filesDir
-          echo "Model files in assets (inside apk):"
-          adb shell "ls -l /data/app/*/com.eternal.ai*/base.apk" | head -1
-          echo "Checking app's private files:"
-          adb shell run-as com.eternal.ai ls -la files/ || echo "run-as failed"
-          adb shell run-as com.eternal.ai ls -la files/model/ || echo "Model dir not found or empty"
-
-          # 2. 输出应用自身的日志（如果有写入 eternal_log.txt）
-          echo "App log file (eternal_log.txt):"
-          adb shell run-as com.eternal.ai cat files/eternal_log.txt 2>/dev/null || echo "No log file"
-
-          # 3. 获取 logcat 中与永恒、推理、ONNX 相关的日志
-          echo "Logcat (eternal/onnx/inference):"
-          adb logcat -d | grep -i "eternal\|onnx\|inference\|tokenizer\|chat" | tail -100
-
-          # ---- 结束诊断 ----
-
-          # 尝试发送一条消息（依然用 keyevent 英文）
+          
+          # 等待引擎初始化（最多40秒）
+          echo "Waiting for engine initialization..."
+          for i in $(seq 1 20); do
+            if adb shell run-as com.eternal.ai cat files/eternal_log.txt 2>/dev/null | grep -q "CoreEngine initialized"; then
+              echo "Engine initialized"
+              break
+            fi
+            sleep 2
+          done
+          
+          # 诊断
+          echo "=== Log file ==="
+          adb shell run-as com.eternal.ai cat files/eternal_log.txt 2>/dev/null || echo "No log"
+          echo "=== Model files ==="
+          adb shell run-as com.eternal.ai ls -l files/model/ 2>/dev/null || echo "No model dir"
+          
+          # 发送消息测试
           adb_text() {
             local str="$1"
             for ((i=0; i<${#str}; i++)); do
@@ -163,17 +162,13 @@ jobs:
                 [A-Z]) keycode=$(( 29 + $(printf '%d' "'$char") - 65 )) ;;
                 [0-9]) keycode=$(( 7 + $(printf '%d' "'$char") - 48 )) ;;
                 ' ') keycode=62 ;;
-                '-') keycode=69 ;;
-                '.') keycode=56 ;;
-                '?') keycode=76 ;;
-                '!') keycode=75 ;;
                 *) keycode=0 ;;
               esac
               [ $keycode -ne 0 ] && adb shell input keyevent $keycode
             done
           }
 
-          echo "Sending test message: hello"
+          echo "Sending hello..."
           adb shell input tap 200 1800
           sleep 0.5
           adb_text "hello"
@@ -181,15 +176,35 @@ jobs:
           adb shell input tap 900 1800
           sleep 20
 
-          echo "Logcat after message:"
-          adb logcat -d -t 100
-
-          # 退出前杀死模拟器
+          echo "=== Logcat after interaction ==="
+          adb logcat -d | grep -i "永恒之神\|推理\|eternal" | tail -30
+          
           kill $EMULATOR_PID || true
-          # 这里故意退出码为 0 以便查看日志，后续修复后再改为失败即退出
+          # 暂时不要求成功，先查看日志
           exit 0
-
-  # 后续的 build-arm64 暂时注释掉，待推理修复后再启用
-  # build-arm64:
-  #   needs: test-emulator
-  #   ...
+          
+  build-arm64:
+    needs: test-emulator
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+      - uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: '8.9'
+      - name: Restore arm64 source
+        run: |
+          sed -i 's/abiFilters += "x86_64"/abiFilters += "arm64-v8a"/g' app/build.gradle.kts
+      - name: Build arm64 APK
+        run: gradle assembleDebug --no-build-cache -Dorg.gradle.jvmargs="-Xmx6g"
+        env:
+          GRADLE_OPTS: "-Xmx6g"
+      - name: Upload arm64 APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: 永恒之神-APK-arm64
+          path: app/build/outputs/apk/debug/app-debug.apk
