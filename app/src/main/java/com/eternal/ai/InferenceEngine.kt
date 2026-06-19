@@ -2,6 +2,7 @@ package com.eternal.ai
 
 import ai.onnxruntime.*
 import android.content.Context
+import android.util.Log
 import java.io.File
 import java.io.FileWriter
 import java.nio.FloatBuffer
@@ -29,28 +30,34 @@ class InferenceEngine(private val context: Context) {
     var onPartialReply: ((String) -> Unit)? = null
 
     fun loadModel(): Boolean {
+        Log.d("InferenceEngine", "loadModel called")
         loadStatus = "检查模型文件..."
         onProgress?.invoke(10, "检查模型文件")
         try {
             val modelDir = File(context.filesDir, "model")
             val modelFile = File(modelDir, "model.onnx")
+            Log.d("InferenceEngine", "Checking model file: ${modelFile.absolutePath}, exists=${modelFile.exists()}, size=${modelFile.length()}")
             if (!modelFile.exists()) {
                 initError("模型文件不存在: ${modelFile.absolutePath}")
+                Log.e("InferenceEngine", "Model file not found!")
                 return false
             }
             modelSize = modelFile.length()
             if (modelSize < 1_000_000) {
                 initError("模型文件异常小: $modelSize 字节")
+                Log.e("InferenceEngine", "Model file too small: $modelSize")
                 return false
             }
 
             onProgress?.invoke(30, "创建 ONNX 会话")
+            Log.d("InferenceEngine", "Creating ONNX session...")
             val options = OrtSession.SessionOptions()
             options.setCPUArenaAllocator(true)
-            // 不使用 ExecutionMode.PARALLEL，避免兼容性问题
             session = env.createSession(modelFile.absolutePath, options)
+            Log.d("InferenceEngine", "ONNX session created successfully")
             writeLog("ONNX 会话创建成功")
 
+            // 解析 attention_mask 形状
             for (input in session!!.inputInfo.values) {
                 if (input.name == "attention_mask") {
                     val tensorInfo = input.info as? TensorInfo
@@ -78,15 +85,18 @@ class InferenceEngine(private val context: Context) {
             if (maxLayerIndex >= 0) numLayers = maxLayerIndex + 1
 
             onProgress?.invoke(60, "加载分词器")
+            Log.d("InferenceEngine", "Loading tokenizer...")
             tokenizer = TokenizerHelper(modelDir)
             tokenizer?.loadError?.let {
                 initError("分词器加载失败: $it")
+                Log.e("InferenceEngine", "Tokenizer load error: $it")
                 return false
             }
 
             val testIds = tokenizer!!.encode("测试")
             if (testIds.isEmpty()) {
                 initError("分词器测试失败")
+                Log.e("InferenceEngine", "Tokenizer test failed")
                 return false
             }
 
@@ -94,9 +104,11 @@ class InferenceEngine(private val context: Context) {
             loadStatus = "神格已激活 (${modelSize / (1024*1024)}MB, 层:$numLayers)"
             onProgress?.invoke(100, loadStatus)
             writeLog("模型加载成功，测试分词通过")
+            Log.d("InferenceEngine", "Model loaded successfully!")
             return true
         } catch (e: Exception) {
             initError("${e.javaClass.simpleName}: ${e.message}")
+            Log.e("InferenceEngine", "Load exception: ${e.javaClass.simpleName}: ${e.message}")
             return false
         }
     }
@@ -113,8 +125,10 @@ class InferenceEngine(private val context: Context) {
             val logFile = File(context.filesDir, "eternal_log.txt")
             FileWriter(logFile, true).use { it.append("${System.currentTimeMillis()}: $msg\n") }
         } catch (_: Exception) {}
+        Log.d("InferenceEngine", msg)
     }
 
+    // 以下推理函数保持不变，但为了完整保留（略，但必须存在）
     private fun createEmptyPastKeyValues(): Map<String, OnnxTensor> {
         val shape = longArrayOf(1L, numKVHeads.toLong(), 0L, headDim.toLong())
         val map = mutableMapOf<String, OnnxTensor>()
