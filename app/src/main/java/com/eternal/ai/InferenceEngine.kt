@@ -53,15 +53,25 @@ class InferenceEngine(private val context: Context) {
             Log.d("InferenceEngine", "Creating ONNX session...")
             val options = OrtSession.SessionOptions()
             options.setCPUArenaAllocator(true)
-            session = env.createSession(modelFile.absolutePath, options)
-            Log.d("InferenceEngine", "ONNX session created successfully")
-            writeLog("ONNX 会话创建成功")
+            val startTime = System.currentTimeMillis()
+            try {
+                session = env.createSession(modelFile.absolutePath, options)
+                val elapsed = System.currentTimeMillis() - startTime
+                Log.d("InferenceEngine", "ONNX session created in ${elapsed}ms")
+                writeLog("ONNX 会话创建成功 (${elapsed}ms)")
+            } catch (e: Exception) {
+                Log.e("InferenceEngine", "ONNX session creation failed", e)
+                initError("ONNX 会话创建失败: ${e.javaClass.simpleName}: ${e.message}")
+                return false
+            }
 
-            // 解析 attention_mask 形状
+            // 解析输入信息
+            onProgress?.invoke(50, "解析模型结构")
             for (input in session!!.inputInfo.values) {
                 if (input.name == "attention_mask") {
                     val tensorInfo = input.info as? TensorInfo
                     attentionMaskShape = tensorInfo?.shape
+                    Log.d("InferenceEngine", "attention_mask shape: ${attentionMaskShape?.joinToString()}")
                     break
                 }
             }
@@ -83,8 +93,9 @@ class InferenceEngine(private val context: Context) {
                 }
             }
             if (maxLayerIndex >= 0) numLayers = maxLayerIndex + 1
+            Log.d("InferenceEngine", "numLayers=$numLayers, numKVHeads=$numKVHeads, headDim=$headDim")
 
-            onProgress?.invoke(60, "加载分词器")
+            onProgress?.invoke(70, "加载分词器")
             Log.d("InferenceEngine", "Loading tokenizer...")
             tokenizer = TokenizerHelper(modelDir)
             tokenizer?.loadError?.let {
@@ -92,6 +103,7 @@ class InferenceEngine(private val context: Context) {
                 Log.e("InferenceEngine", "Tokenizer load error: $it")
                 return false
             }
+            Log.d("InferenceEngine", "Tokenizer loaded, eosId=${tokenizer?.eosTokenId}")
 
             val testIds = tokenizer!!.encode("测试")
             if (testIds.isEmpty()) {
@@ -99,6 +111,7 @@ class InferenceEngine(private val context: Context) {
                 Log.e("InferenceEngine", "Tokenizer test failed")
                 return false
             }
+            Log.d("InferenceEngine", "Tokenizer test passed, sample ids count: ${testIds.size}")
 
             isModelLoaded = true
             loadStatus = "神格已激活 (${modelSize / (1024*1024)}MB, 层:$numLayers)"
@@ -108,7 +121,7 @@ class InferenceEngine(private val context: Context) {
             return true
         } catch (e: Exception) {
             initError("${e.javaClass.simpleName}: ${e.message}")
-            Log.e("InferenceEngine", "Load exception: ${e.javaClass.simpleName}: ${e.message}")
+            Log.e("InferenceEngine", "Load exception: ${e.javaClass.simpleName}: ${e.message}", e)
             return false
         }
     }
@@ -128,7 +141,7 @@ class InferenceEngine(private val context: Context) {
         Log.d("InferenceEngine", msg)
     }
 
-    // 以下推理函数保持不变，但为了完整保留（略，但必须存在）
+    // 以下推理函数保持不变
     private fun createEmptyPastKeyValues(): Map<String, OnnxTensor> {
         val shape = longArrayOf(1L, numKVHeads.toLong(), 0L, headDim.toLong())
         val map = mutableMapOf<String, OnnxTensor>()

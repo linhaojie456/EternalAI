@@ -1,5 +1,5 @@
 #!/bin/bash
-set -e
+set +e  # 允许步骤失败，以便收集日志
 
 ANDROID_HOME="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
 WORKSPACE="${GITHUB_WORKSPACE:-$(pwd)}"
@@ -88,24 +88,30 @@ adb shell am force-stop com.eternal.ai
 sleep 2
 adb shell am start -n com.eternal.ai/.SplashActivity
 
-# ---- 等待引擎通过 logcat 标志激活 ----
-echo "Waiting for engine via logcat..."
-for i in $(seq 1 30); do
+# ---- 等待引擎激活（增加等待时间到120秒，并持续检查logcat） ----
+echo "Waiting for engine (max 120s)..."
+for i in $(seq 1 60); do
   if adb logcat -d | grep -q "神格已激活"; then
     echo "Engine activated!"; break
   fi
-  echo "Logcat snippet:"
-  adb logcat -d | grep -i "InferenceEngine\|CoreEngine\|eternal" | tail -5
+  if adb logcat -d | grep -q "神格激活失败\|InferenceEngine.*ERROR\|FATAL\|AndroidRuntime"; then
+    echo "Engine failed to load, printing relevant logcat:"
+    adb logcat -d | grep -E "InferenceEngine|CoreEngine|神格|AndroidRuntime" | tail -30
+    break
+  fi
+  # 每2秒检查一次
   sleep 2
 done
 
-# ---- 打印完整日志 ----
-echo "=== Eternal log ==="
+# 收集最终日志
+echo "=== Eternal Log ==="
 adb shell run-as com.eternal.ai cat files/eternal_log.txt 2>/dev/null || echo "No log"
-echo "=== Crash log ==="
+echo "=== Crash Log ==="
 adb shell run-as com.eternal.ai cat files/eternal_crash.log 2>/dev/null || echo "No crash"
+echo "=== Full logcat Inference/Core ==="
+adb logcat -d | grep -i "InferenceEngine\|CoreEngine\|神格\|AndroidRuntime" | tail -50
 
-# ---- 发送单条消息并检查 ----
+# 尝试发送消息并检查
 echo "Sending hello"
 adb shell input tap 200 1800
 sleep 0.5
@@ -113,7 +119,8 @@ for code in 36 33 40 40 43; do adb shell input keyevent $code; done
 sleep 0.5
 adb shell input tap 900 1800
 sleep 20
-echo "=== Final logcat ==="
-adb logcat -d | grep -i "永恒之神\|推理成功\|assistant\|InferenceEngine\|CoreEngine" | tail -20
+
+echo "=== Logcat after message ==="
+adb logcat -d | grep -i "永恒之神\|推理成功\|assistant\|InferenceEngine" | tail -20
 
 kill $EMULATOR_PID || true
