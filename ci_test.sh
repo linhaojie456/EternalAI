@@ -42,7 +42,7 @@ cd "${WORKSPACE}"
 sed -i 's/abiFilters += "arm64-v8a"/abiFilters += "x86_64"/g' app/build.gradle.kts
 gradle assembleDebug --no-build-cache -Dorg.gradle.jvmargs="-Xmx6g"
 
-# ---- 启动模拟器（内存 4096MB）----
+# ---- 启动模拟器（4096MB）----
 yes | ${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager "platform-tools" "emulator" "system-images;android-29;google_apis;x86_64" 2>&1 | tail -3
 export PATH="${ANDROID_HOME}/platform-tools:${ANDROID_HOME}/emulator:${ANDROID_HOME}/cmdline-tools/latest/bin:$PATH"
 export ANDROID_AVD_HOME="$HOME/.config/.android/avd"
@@ -87,27 +87,24 @@ adb shell am force-stop com.eternal.ai
 sleep 2
 adb shell am start -n com.eternal.ai/.SplashActivity
 
-# ---- 等待引擎激活（最多等待 2 分钟）----
-echo "Waiting for engine (max 120s)..."
+# ---- 等待引擎激活（最多 120 秒，仅检查“神格已激活”）----
+echo "Waiting for engine activation..."
+activated=0
 for i in $(seq 1 60); do
   if adb logcat -d | grep -q "神格已激活"; then
-    echo "Engine activated!"; break
-  fi
-  if adb logcat -d | grep -q "神格激活失败\|InferenceEngine.*ERROR\|FATAL\|AndroidRuntime"; then
-    echo "Engine failed to load:"
-    adb logcat -d | grep -E "InferenceEngine|CoreEngine|神格|AndroidRuntime" | tail -20
+    echo "Engine activated successfully!"
+    activated=1
     break
   fi
   sleep 2
 done
 
-# ---- 如果引擎未激活，打印完整诊断并允许失败（暂时，最终会修复）----
-if ! adb logcat -d | grep -q "神格已激活"; then
-    echo "=== Engine did not activate. Full diagnostics ==="
-    adb shell run-as com.eternal.ai cat files/eternal_log.txt 2>/dev/null
-    adb logcat -d | grep -i "InferenceEngine\|CoreEngine\|神格\|AndroidRuntime" | tail -50
-    kill $EMULATOR_PID || true
-    exit 0   # 暂时不阻断，先观察日志
+if [ $activated -eq 0 ]; then
+  echo "=== Engine did not activate in time. Printing diagnostics ==="
+  adb shell run-as com.eternal.ai cat files/eternal_log.txt 2>/dev/null
+  adb logcat -d | grep -i "InferenceEngine\|神格\|CoreEngine" | tail -30
+  kill $EMULATOR_PID || true
+  exit 1   # 失败
 fi
 
 # ---- 10 轮英文验证 ----
