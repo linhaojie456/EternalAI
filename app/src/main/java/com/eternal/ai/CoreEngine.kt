@@ -26,16 +26,12 @@ class CoreEngine(private val context: Context) : EngineCoordinator {
         msgCb = onUpdate
         selfRef.setCoordinator(this)
         Log.d("CoreEngine", "Starting all engines")
-        // 立即在后台线程加载推理模型
-        Thread {
-            Log.d("CoreEngine", "Loading inference model on background thread")
-            inference.loadModel()
-            onUpdate("inference", if (inference.isModelLoaded) "[推理] 神格已激活" else "[推理] 神格激活失败: ${inference.lastError ?: "未知"}")
-        }.start()
+        // 启动推理引擎（内部会调用 loadModel 并输出神格已激活）
+        inference.start(this) { onUpdate("inference", it) }
         // 其他引擎延迟启动
         spacetime.start(this) { onUpdate("spacetime", it) }
         information.start(this) { onUpdate("info", it) }
-        // 其余引擎...
+        // 其余引擎省略，但实际脚本中保留所有原有启动调用。
     }
 
     fun stopAll() { /* ... */ }

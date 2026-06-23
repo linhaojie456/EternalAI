@@ -87,8 +87,8 @@ adb shell am force-stop com.eternal.ai
 sleep 2
 adb shell am start -n com.eternal.ai/.SplashActivity
 
-# ---- 等待引擎激活（最多 120 秒，仅检查“神格已激活”）----
-echo "Waiting for engine activation..."
+# ---- 等待引擎激活（检查“神格已激活”）----
+echo "Waiting for engine activation (神格已激活)..."
 activated=0
 for i in $(seq 1 60); do
   if adb logcat -d | grep -q "神格已激活"; then
@@ -104,7 +104,7 @@ if [ $activated -eq 0 ]; then
   adb shell run-as com.eternal.ai cat files/eternal_log.txt 2>/dev/null
   adb logcat -d | grep -i "InferenceEngine\|神格\|CoreEngine" | tail -30
   kill $EMULATOR_PID || true
-  exit 1   # 失败
+  exit 1
 fi
 
 # ---- 10 轮英文验证 ----
