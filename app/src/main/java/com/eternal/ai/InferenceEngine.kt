@@ -79,7 +79,7 @@ class InferenceEngine(private val context: Context) {
             loadStatus = "神格已激活 (${modelSize/(1024*1024)}MB, 层:$numLayers)"
             onProgress?.invoke(100, loadStatus)
             writeLog("模型加载成功，测试分词通过")
-            Log.d("InferenceEngine", "神格已激活")   // 关键检测点
+            Log.d("InferenceEngine", "神格已激活")
             return true
         } catch (e: Exception) {
             initError("${e.javaClass.simpleName}: ${e.message}")
@@ -96,7 +96,6 @@ class InferenceEngine(private val context: Context) {
         Log.d("InferenceEngine", msg)
     }
 
-    // 以下为推理所需辅助函数，保留完整实现
     private fun createEmptyPastKeyValues(): Map<String, OnnxTensor> {
         val shape = longArrayOf(1L, numKVHeads.toLong(), 0L, headDim.toLong())
         val map = mutableMapOf<String, OnnxTensor>()
