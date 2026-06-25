@@ -120,7 +120,7 @@ for q in "${questions[@]}"; do
   sleep 0.5
   adb shell input tap 900 1800
   sleep 20
-  log=$(adb logcat -d | tail -50 | grep -i "永恒之神\|推理成功\|assistant" || true)
+  log=$(adb logcat -d | tail -50 | grep -i "推理Token\|推理成功\|assistant" || true)
   if [ -n "$log" ]; then
     echo "Reply found for '$q'"; success=$((success + 1))
   else

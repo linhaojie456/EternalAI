@@ -183,19 +183,25 @@ class InferenceEngine(private val context: Context) {
                 )
                 inputs.putAll(past)
                 val result = sess.run(inputs)
-                val logitsTensor = (result[logitsIdx] as? OnnxTensor) ?: break
+                // 关键修复：使用 result.get() 而不是 result[]
+                val logitsValue: OnnxValue = result.get(logitsIdx)
+                val logitsTensor = logitsValue as? OnnxTensor ?: break
                 val logits = extractLogits(logitsTensor) ?: break
                 val nextToken = sampleToken(logits[logits.size - 1], generated)
 
                 if (generated.isNotEmpty() && nextToken == eosId) break
                 generated.add(nextToken)
-                onToken(tok.decode(longArrayOf(nextToken)))
+                val tokenText = tok.decode(longArrayOf(nextToken))
+                if (tokenText.isNotEmpty()) {
+                    onToken(tokenText)
+                    Log.d("InferenceEngine", "推理Token: $tokenText")   // 日志输出
+                }
 
                 val newPast = mutableMapOf<String, OnnxTensor>()
                 for (i in outputNames.indices) {
                     val name = outputNames[i]
                     if (name.startsWith("present.")) {
-                        val tensor = result[i] as? OnnxTensor ?: continue
+                        val tensor = result.get(i) as? OnnxTensor ?: continue
                         val parts = name.removePrefix("present.").split(".")
                         if (parts.size >= 2) {
                             val layer = parts[0].toIntOrNull() ?: continue
@@ -209,6 +215,7 @@ class InferenceEngine(private val context: Context) {
                 posIds = mutableListOf((allIds.size + generated.size - 1).toLong())
                 mask = createAttentionMaskTensor(1)
             }
+            Log.d("InferenceEngine", "推理结束，生成token数: ${generated.size}")
         } catch (e: Exception) {
             writeLog("推理异常: ${e.message}")
             onToken("神格波动，神谕暂不可达。")
