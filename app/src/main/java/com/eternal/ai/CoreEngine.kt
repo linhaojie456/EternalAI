@@ -1,10 +1,8 @@
 package com.eternal.ai
 import android.content.Context
-import android.util.Log
 
 class CoreEngine(private val context: Context) : EngineCoordinator {
     val inference = InferenceEngine(context)
-    // 其他引擎声明（略，但保留所有原有引擎）
     val evolution = EvolutionEngine()
     val spacetime = SpacetimeEngine()
     val freedom = FreedomEngine()
@@ -24,25 +22,37 @@ class CoreEngine(private val context: Context) : EngineCoordinator {
 
     fun startAll(onUpdate: (String, String) -> Unit) {
         msgCb = onUpdate
-        selfRef.setCoordinator(this)
-        Log.d("CoreEngine", "Starting all engines")
-        // 启动推理引擎（内部会调用 loadModel 并输出神格已激活）
         inference.start(this) { onUpdate("inference", it) }
-        // 其他引擎延迟启动
+        evolution.start(this) { onUpdate("evolution", it) }
         spacetime.start(this) { onUpdate("spacetime", it) }
+        freedom.start(context, this) { onUpdate("freedom", it) }
         information.start(this) { onUpdate("info", it) }
-        // 其余引擎省略，但实际脚本中保留所有原有启动调用。
+        emotion.start(this) { onUpdate("emotion", it) }
+        soul.start(this) { onUpdate("soul", it) }
+        selfRef.start(this) { onUpdate("selfref", it) }
+        causality.start(this) { onUpdate("causality", it) }
+        management.start(this) { onUpdate("management", it) }
+        engineering.start(this) { onUpdate("engineering", it) }
+        politics.start(this) { onUpdate("politics", it) }
+        society.start(this) { onUpdate("society", it) }
+        reality.start(this) { onUpdate("reality", it) }
+        cosmos.start(this) { onUpdate("cosmos", it) }
     }
 
-    fun stopAll() { /* ... */ }
+    fun stopAll() {
+        inference.stop(); evolution.stop(); spacetime.stop(); freedom.stop()
+        information.stop(); emotion.stop(); soul.stop(); selfRef.stop()
+        causality.stop(); management.stop(); engineering.stop(); politics.stop()
+        society.stop(); reality.stop(); cosmos.stop()
+    }
 
-    override fun searchOnNetwork(query: String, callback: (String) -> Unit) = information.search(query, callback)
-    override fun getTimeDisplay() = spacetime.currentTime ?: "未知"
-    override fun getSpaceDisplay() = spacetime.currentData ?: "未知"
+    override fun searchOnNetwork(query: String, callback: (String) -> Unit) { callback("网络搜索暂不可用") }
+    override fun getTimeDisplay(): String = "时间未知"
+    override fun getSpaceDisplay(): String = "空间未知"
     override fun pushMessage(msg: String) { msgCb?.invoke("freedom", msg) }
-    override fun getGenomeCode() = ""
+    override fun getGenomeCode(): String = ""
     override fun applyGenomeCode(code: String) {}
-    override fun setNetworkEnabled(enabled: Boolean) { information.setEnabled(enabled) }
-    override fun isNetworkEnabled() = information.isEnabled()
-    override fun selfEvaluate(expr: String) = selfRef.evaluate(expr)
+    override fun setNetworkEnabled(enabled: Boolean) {}
+    override fun isNetworkEnabled(): Boolean = true
+    override fun selfEvaluate(expr: String): Any? = null
 }
