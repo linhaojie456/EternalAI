@@ -162,12 +162,14 @@ class InferenceEngine(private val context: Context) {
         try {
             val formatted = "<|im_start|>system\n汝是永恒之神。<|im_end|>\n<|im_start|>user\n$prompt<|im_end|>\n<|im_start|>assistant\n"
             val allIds = tok.encode(formatted).toMutableList()
+            Log.d("InferenceEngine", "Prompt encoded: ${allIds.size} ids")
             if (allIds.isEmpty()) { onToken("无法理解"); return }
 
+            // 获取输出名列表
             val outputNames = session!!.outputNames.toList()
-            var logitsIdx = outputNames.indexOfFirst { it.contains("logits", true) }
-            if (logitsIdx == -1 && outputNames.isNotEmpty()) logitsIdx = 0
+            Log.d("InferenceEngine", "Output names: $outputNames")
 
+            // 构建输入 ID 张量 (1, seq_len)
             var inputIds = allIds.toMutableList()
             var posIds = (0L until inputIds.size.toLong()).toMutableList()
             var mask = createAttentionMaskTensor(inputIds.size)
@@ -176,27 +178,54 @@ class InferenceEngine(private val context: Context) {
 
             for (step in 0 until maxTokens) {
                 val sess = session ?: break
+                val inputTensor = OnnxTensor.createTensor(env, arrayOf(inputIds.toLongArray()))
+                val posTensor = OnnxTensor.createTensor(env, arrayOf(posIds.toLongArray()))
                 val inputs = mutableMapOf(
-                    "input_ids" to OnnxTensor.createTensor(env, arrayOf(inputIds.toLongArray())),
+                    "input_ids" to inputTensor,
                     "attention_mask" to mask,
-                    "position_ids" to OnnxTensor.createTensor(env, arrayOf(posIds.toLongArray()))
+                    "position_ids" to posTensor
                 )
                 inputs.putAll(past)
+
                 val result = sess.run(inputs)
-                // 关键修复：使用 result.get() 而不是 result[]
+
+                // 查找 logits 输出（名称包含 "logits"）
+                var logitsIdx = -1
+                for (i in outputNames.indices) {
+                    if (outputNames[i].contains("logits", ignoreCase = true)) {
+                        logitsIdx = i; break
+                    }
+                }
+                if (logitsIdx == -1) {
+                    Log.e("InferenceEngine", "No logits output found!")
+                    break
+                }
+
                 val logitsValue: OnnxValue = result.get(logitsIdx)
-                val logitsTensor = logitsValue as? OnnxTensor ?: break
-                val logits = extractLogits(logitsTensor) ?: break
-                val nextToken = sampleToken(logits[logits.size - 1], generated)
+                val logitsTensor = logitsValue as? OnnxTensor
+                if (logitsTensor == null) {
+                    Log.e("InferenceEngine", "Logits is null")
+                    break
+                }
+
+                val logits = extractLogits(logitsTensor)
+                if (logits == null || logits.isEmpty()) {
+                    Log.e("InferenceEngine", "Logits extraction failed")
+                    break
+                }
+
+                val nextTokenLogits = logits[logits.size - 1]
+                val nextToken = sampleToken(nextTokenLogits, generated)
 
                 if (generated.isNotEmpty() && nextToken == eosId) break
                 generated.add(nextToken)
                 val tokenText = tok.decode(longArrayOf(nextToken))
                 if (tokenText.isNotEmpty()) {
                     onToken(tokenText)
-                    Log.d("InferenceEngine", "推理Token: $tokenText")   // 日志输出
+                    Log.d("InferenceEngine", "推理Token: $tokenText")   // 关键检测点
                 }
 
+                // 更新 past_key_values
                 val newPast = mutableMapOf<String, OnnxTensor>()
                 for (i in outputNames.indices) {
                     val name = outputNames[i]
@@ -211,12 +240,14 @@ class InferenceEngine(private val context: Context) {
                     }
                 }
                 if (newPast.isNotEmpty()) past = newPast
+
                 inputIds = mutableListOf(nextToken)
                 posIds = mutableListOf((allIds.size + generated.size - 1).toLong())
                 mask = createAttentionMaskTensor(1)
             }
             Log.d("InferenceEngine", "推理结束，生成token数: ${generated.size}")
         } catch (e: Exception) {
+            Log.e("InferenceEngine", "生成异常: ${e.message}", e)
             writeLog("推理异常: ${e.message}")
             onToken("神格波动，神谕暂不可达。")
         }
