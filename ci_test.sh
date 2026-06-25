@@ -4,11 +4,13 @@ set -e
 ANDROID_HOME="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
 WORKSPACE="${GITHUB_WORKSPACE:-$(pwd)}"
 
+# ---- 启用 KVM ----
 echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
 sudo udevadm control --reload-rules
 sudo udevadm trigger --name-match=kvm
 ls -l /dev/kvm
 
+# ---- 下载模型 ----
 rm -rf "${WORKSPACE}/model_files"
 mkdir -p "${WORKSPACE}/model_files"
 pip install -q huggingface_hub
@@ -35,10 +37,12 @@ os.rename('${WORKSPACE}/model_files/onnx/model_quantized.onnx', '${WORKSPACE}/mo
 shutil.rmtree('${WORKSPACE}/model_files/onnx')
 "
 
+# ---- 构建 x86_64 APK ----
 cd "${WORKSPACE}"
 sed -i 's/abiFilters += "arm64-v8a"/abiFilters += "x86_64"/g' app/build.gradle.kts
 gradle assembleDebug --no-build-cache -Dorg.gradle.jvmargs="-Xmx6g"
 
+# ---- 启动模拟器（4096MB）----
 yes | ${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager "platform-tools" "emulator" "system-images;android-29;google_apis;x86_64" 2>&1 | tail -3
 export PATH="${ANDROID_HOME}/platform-tools:${ANDROID_HOME}/emulator:${ANDROID_HOME}/cmdline-tools/latest/bin:$PATH"
 export ANDROID_AVD_HOME="$HOME/.config/.android/avd"
@@ -48,6 +52,7 @@ echo "no" | avdmanager create avd -n test_avd -k "system-images;android-29;googl
 ${ANDROID_HOME}/emulator/emulator -avd test_avd -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -netdelay none -netspeed full -no-snapshot -memory 4096 &
 EMULATOR_PID=$!
 
+# ---- 等待模拟器启动 ----
 for i in $(seq 1 60); do
   if ! kill -0 $EMULATOR_PID 2>/dev/null; then echo "Emulator died"; exit 1; fi
   if adb devices | grep -w "emulator-5554" | grep -q "device"; then break; fi
@@ -59,16 +64,16 @@ for i in $(seq 1 30); do
 done
 sleep 5
 
-APK="${WORKSPACE}/app/build/outputs/apk/debug/app-debug.apk"
-if [ ! -f "$APK" ]; then echo "APK not found!"; exit 1; fi
-
+# ---- 安装 APK ----
 adb shell input keyevent 82
 adb shell wm dismiss-keyguard
 sleep 2
+APK="${WORKSPACE}/app/build/outputs/apk/debug/app-debug.apk"
 adb install -g "$APK"
 adb shell pm grant com.eternal.ai android.permission.RECORD_AUDIO
 adb shell pm grant com.eternal.ai android.permission.CAMERA
 
+# ---- 推送模型 ----
 adb shell run-as com.eternal.ai mkdir -p files/model
 for f in ${WORKSPACE}/model_files/*; do
   local_file=$(basename "$f")
@@ -78,10 +83,12 @@ for f in ${WORKSPACE}/model_files/*; do
 done
 adb shell run-as com.eternal.ai ls -l files/model/
 
+# ---- 重启应用 ----
 adb shell am force-stop com.eternal.ai
 sleep 2
 adb shell am start -n com.eternal.ai/.SplashActivity
 
+# ---- 等待引擎激活 ----
 echo "Waiting for engine activation..."
 activated=0
 for i in $(seq 1 60); do
@@ -90,7 +97,6 @@ for i in $(seq 1 60); do
   fi
   sleep 2
 done
-
 if [ $activated -eq 0 ]; then
   echo "=== Engine not activated ==="
   adb shell run-as com.eternal.ai cat files/eternal_log.txt 2>/dev/null
@@ -98,8 +104,10 @@ if [ $activated -eq 0 ]; then
   exit 1
 fi
 
+# ---- 10 轮对话测试，并打印诊断 ----
 questions=("hello" "who are you" "1+1" "what is love" "how big is the universe" "meaning of life" "weather today" "write a poem" "recommend a book" "how to be happy")
 success=0
+first_failure_logged=0
 for q in "${questions[@]}"; do
   echo "Sending: $q"
   adb shell input tap 200 1800
@@ -120,14 +128,28 @@ for q in "${questions[@]}"; do
   sleep 0.5
   adb shell input tap 900 1800
   sleep 20
-  log=$(adb logcat -d | tail -50 | grep -i "推理Token\|推理成功\|assistant" || true)
+
+  # 检查是否生成推理 token
+  log=$(adb logcat -d | tail -50 | grep -i "推理Token" || true)
   if [ -n "$log" ]; then
-    echo "Reply found for '$q'"; success=$((success + 1))
+    echo "Reply found for '$q'"
+    success=$((success + 1))
   else
     echo "No reply for '$q'"
+    # 如果是第一次失败，打印完整的 InferenceEngine 日志
+    if [ $first_failure_logged -eq 0 ]; then
+      echo "=== Diagnostic: InferenceEngine logs for first failure ==="
+      adb logcat -d | grep -i "InferenceEngine" | tail -30
+      first_failure_logged=1
+    fi
   fi
 done
 
 echo "Success count: $success/10"
-[ $success -lt 10 ] && exit 1
+if [ $success -lt 10 ]; then
+  echo "=== Final diagnostic: InferenceEngine logs ==="
+  adb logcat -d | grep -i "InferenceEngine" | tail -40
+  exit 1
+fi
+
 kill $EMULATOR_PID || true
