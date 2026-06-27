@@ -92,10 +92,10 @@ done
 questions=("hello" "who are you" "1+1" "what is love" "how big is the universe" "meaning of life" "weather today" "write a poem" "recommend a book" "how to be happy")
 success=0
 for q in "${questions[@]}"; do
-  echo "Sending via broadcast: $q"
-  adb shell am broadcast -a com.eternal.ai.TEST_SEND --es message "$q"
-  sleep 25
-  log=$(adb logcat -d | tail -50 | grep -i "Inference reply\|推理Token" || true)
+  echo "Sending via am start: $q"
+  adb shell am start -n com.eternal.ai/.MainActivity --es TEST_MESSAGE "$q" --ez TEST_MODE true
+  sleep 30
+  log=$(adb logcat -d | tail -30 | grep -i "Inference reply" || true)
   if [ -n "$log" ]; then
     echo "Reply found for '$q'"; success=$((success + 1))
   else
@@ -104,5 +104,5 @@ for q in "${questions[@]}"; do
 done
 
 echo "Success count: $success/10"
-[ $success -lt 10 ] && { echo "=== Diagnostic ==="; adb logcat -d | grep -iE "TestReceiver|InferenceEngine" | tail -30; exit 1; }
+[ $success -lt 10 ] && { echo "=== Diagnostic ==="; adb logcat -d | grep -iE "MainActivity|InferenceEngine" | tail -30; exit 1; }
 kill $EMULATOR_PID || true

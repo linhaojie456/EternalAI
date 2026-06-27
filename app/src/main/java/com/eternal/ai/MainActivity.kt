@@ -1,6 +1,8 @@
 package com.eternal.ai
 
+import android.content.Intent
 import android.os.Bundle
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
@@ -19,6 +21,25 @@ class MainActivity : ComponentActivity() {
     @OptIn(ExperimentalMaterial3Api::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        // ---- 测试模式：如果 intent 包含 TEST_MESSAGE，直接调用推理 ----
+        val testMessage = intent?.getStringExtra("TEST_MESSAGE")
+        if (testMessage != null) {
+            Log.d("MainActivity", "Test mode: received message '$testMessage'")
+            val app = application as MainApplication
+            val engine = app.coreEngine
+            if (engine != null && engine.inference.isModelLoaded) {
+                Thread {
+                    Log.d("MainActivity", "Starting inference for '$testMessage'")
+                    val reply = engine.inference.generate(testMessage)
+                    Log.d("MainActivity", "Inference reply: $reply")
+                }.start()
+            } else {
+                Log.e("MainActivity", "Engine not ready for test")
+            }
+            // 仍显示 UI，但推理已在后台运行
+        }
+
         setContent {
             var currentScreen by remember { mutableStateOf("chat") }
             val chatVM = remember { ChatViewModel(application) }
