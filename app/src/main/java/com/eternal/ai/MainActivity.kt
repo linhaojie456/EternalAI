@@ -37,7 +37,6 @@ class MainActivity : ComponentActivity() {
             } else {
                 Log.e("MainActivity", "Engine not ready for test")
             }
-            // 仍显示 UI，但推理已在后台运行
         }
 
         setContent {
