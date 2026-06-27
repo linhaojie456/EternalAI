@@ -126,11 +126,11 @@ for q in "${questions[@]}"; do
     [ $keycode -ne 0 ] && adb shell input keyevent $keycode
   done
   sleep 0.5
-  adb shell input tap 900 1800
+  adb shell input keyevent 66
   sleep 20
 
   # 检查是否生成推理 token
-  log=$(adb logcat -d | tail -50 | grep -i "推理Token" || true)
+  log=$(adb logcat -d | tail -50 | grep -i "generateStream 开始" || true)
   if [ -n "$log" ]; then
     echo "Reply found for '$q'"
     success=$((success + 1))

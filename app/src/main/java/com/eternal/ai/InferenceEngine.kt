@@ -156,61 +156,50 @@ class InferenceEngine(private val context: Context) {
     }
 
     fun generateStream(prompt: String, maxTokens: Int = 200, onToken: (String) -> Unit) {
-        if (!isModelLoaded) { onToken("神格未激活"); return }
-        val tok = tokenizer ?: run { onToken("分词器不可用"); return }
+        Log.d("InferenceEngine", "generateStream 开始，prompt=$prompt")
+        if (!isModelLoaded) { Log.e("InferenceEngine", "模型未加载"); onToken("神格未激活"); return }
+        val tok = tokenizer ?: run { Log.e("InferenceEngine", "分词器不可用"); onToken("分词器不可用"); return }
         val eosId = tok.eosTokenId
         try {
             val formatted = "<|im_start|>system\n汝是永恒之神。<|im_end|>\n<|im_start|>user\n$prompt<|im_end|>\n<|im_start|>assistant\n"
             val allIds = tok.encode(formatted).toMutableList()
-            Log.d("InferenceEngine", "Prompt encoded: ${allIds.size} ids")
-            if (allIds.isEmpty()) { onToken("无法理解"); return }
+            Log.d("InferenceEngine", "编码后的ids数量: ${allIds.size}")
+            if (allIds.isEmpty()) { Log.e("InferenceEngine", "编码后ids为空"); onToken("无法理解"); return }
 
-            // 获取输出名列表
             val outputNames = session!!.outputNames.toList()
-            Log.d("InferenceEngine", "Output names: $outputNames")
+            var logitsIdx = outputNames.indexOfFirst { it.contains("logits", true) }
+            if (logitsIdx == -1 && outputNames.isNotEmpty()) {
+                Log.w("InferenceEngine", "未找到logits输出，使用第一个输出")
+                logitsIdx = 0
+            }
 
-            // 构建输入 ID 张量 (1, seq_len)
             var inputIds = allIds.toMutableList()
             var posIds = (0L until inputIds.size.toLong()).toMutableList()
             var mask = createAttentionMaskTensor(inputIds.size)
             var past = createEmptyPastKeyValues()
             val generated = mutableListOf<Long>()
 
+            Log.d("InferenceEngine", "开始生成循环，maxTokens=$maxTokens")
             for (step in 0 until maxTokens) {
                 val sess = session ?: break
-                val inputTensor = OnnxTensor.createTensor(env, arrayOf(inputIds.toLongArray()))
-                val posTensor = OnnxTensor.createTensor(env, arrayOf(posIds.toLongArray()))
                 val inputs = mutableMapOf(
-                    "input_ids" to inputTensor,
+                    "input_ids" to OnnxTensor.createTensor(env, arrayOf(inputIds.toLongArray())),
                     "attention_mask" to mask,
-                    "position_ids" to posTensor
+                    "position_ids" to OnnxTensor.createTensor(env, arrayOf(posIds.toLongArray()))
                 )
                 inputs.putAll(past)
-
                 val result = sess.run(inputs)
-
-                // 查找 logits 输出（名称包含 "logits"）
-                var logitsIdx = -1
-                for (i in outputNames.indices) {
-                    if (outputNames[i].contains("logits", ignoreCase = true)) {
-                        logitsIdx = i; break
-                    }
-                }
-                if (logitsIdx == -1) {
-                    Log.e("InferenceEngine", "No logits output found!")
-                    break
-                }
 
                 val logitsValue: OnnxValue = result.get(logitsIdx)
                 val logitsTensor = logitsValue as? OnnxTensor
                 if (logitsTensor == null) {
-                    Log.e("InferenceEngine", "Logits is null")
+                    Log.e("InferenceEngine", "logitsTensor is null at step $step")
                     break
                 }
 
                 val logits = extractLogits(logitsTensor)
                 if (logits == null || logits.isEmpty()) {
-                    Log.e("InferenceEngine", "Logits extraction failed")
+                    Log.e("InferenceEngine", "extractLogits failed at step $step")
                     break
                 }
 
@@ -222,10 +211,9 @@ class InferenceEngine(private val context: Context) {
                 val tokenText = tok.decode(longArrayOf(nextToken))
                 if (tokenText.isNotEmpty()) {
                     onToken(tokenText)
-                    Log.d("InferenceEngine", "推理Token: $tokenText")   // 关键检测点
+                    Log.d("InferenceEngine", "推理Token: $tokenText")
                 }
 
-                // 更新 past_key_values
                 val newPast = mutableMapOf<String, OnnxTensor>()
                 for (i in outputNames.indices) {
                     val name = outputNames[i]
@@ -245,7 +233,7 @@ class InferenceEngine(private val context: Context) {
                 posIds = mutableListOf((allIds.size + generated.size - 1).toLong())
                 mask = createAttentionMaskTensor(1)
             }
-            Log.d("InferenceEngine", "推理结束，生成token数: ${generated.size}")
+            Log.d("InferenceEngine", "生成循环结束，生成token数: ${generated.size}")
         } catch (e: Exception) {
             Log.e("InferenceEngine", "生成异常: ${e.message}", e)
             writeLog("推理异常: ${e.message}")

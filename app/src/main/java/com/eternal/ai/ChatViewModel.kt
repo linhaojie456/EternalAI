@@ -1,5 +1,6 @@
 package com.eternal.ai
 import android.app.Application
+import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.eternal.ai.data.AppDatabase
@@ -32,6 +33,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
         val engine = coreEngine
         if (engine != null) {
+            Log.d("ChatViewModel", "coreEngine ready")
             engine.inference.onProgress = { p, m -> _state.update { it.copy(progressPercent = p, inferenceStatus = "加载中 $p%: $m") } }
             engine.inference.onPartialReply = { t -> _state.update { it.copy(streamingContent = t) } }
             engine.startAll { type, data ->
@@ -40,26 +42,48 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 }
             }
         } else {
+            Log.e("ChatViewModel", "coreEngine is null!")
             _state.update { it.copy(inferenceStatus = "引擎未初始化") }
         }
     }
 
     fun sendMessage(text: String) {
-        val t = text.trim(); if (t.isEmpty() || _state.value.isLoading) return
+        val t = text.trim()
+        if (t.isEmpty() || _state.value.isLoading) {
+            Log.d("ChatViewModel", "sendMessage 跳过：empty=$t, isLoading=${_state.value.isLoading}")
+            return
+        }
+
         val engine = coreEngine
         if (engine == null) {
+            Log.e("ChatViewModel", "sendMessage 失败：coreEngine 为 null")
             _state.update { it.copy(messages = it.messages + "永恒之神: 引擎未初始化，无法回复。") }
             return
         }
+
+        if (!engine.inference.isModelLoaded) {
+            Log.e("ChatViewModel", "sendMessage 失败：模型未加载，错误=${engine.inference.lastError}")
+            _state.update { it.copy(messages = it.messages + "永恒之神: 神格未激活，错误：${engine.inference.lastError}") }
+            return
+        }
+
         viewModelScope.launch(Dispatchers.IO) { dao.insertMessage(ChatMessage(sender = "造物主", content = t)) }
         _state.update { it.copy(messages = (it.messages + "造物主: $t").takeLast(MAX_MSG), isLoading = true, streamingContent = "") }
+
+        Log.d("ChatViewModel", "开始调用 generateStream，prompt=$t")
         viewModelScope.launch(Dispatchers.Default) {
             val sb = StringBuilder()
             try {
-                if (!engine.inference.isModelLoaded) sb.append("神格未激活: ${engine.inference.lastError}")
-                else engine.inference.generateStream(t) { token -> sb.append(token); _state.update { it.copy(streamingContent = sb.toString()) } }
-            } catch (e: Exception) { sb.append("出错: ${e.message}") }
+                engine.inference.generateStream(t) { token ->
+                    sb.append(token)
+                    _state.update { it.copy(streamingContent = sb.toString()) }
+                }
+            } catch (e: Exception) {
+                Log.e("ChatViewModel", "generateStream 异常: ${e.message}")
+                sb.append("出错: ${e.message}")
+            }
             val reply = sb.toString()
+            Log.d("ChatViewModel", "generateStream 完成，回复长度=${reply.length}，内容=${reply.take(100)}")
             viewModelScope.launch(Dispatchers.IO) { dao.insertMessage(ChatMessage(sender = "永恒之神", content = reply)) }
             _state.update { it.copy(messages = (it.messages + "永恒之神: $reply").takeLast(MAX_MSG), isLoading = false, streamingContent = "") }
         }
