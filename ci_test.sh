@@ -104,14 +104,16 @@ if [ $activated -eq 0 ]; then
   exit 1
 fi
 
-# ---- 10 轮对话测试，并打印诊断 ----
+# ---- 10 轮对话测试，恢复点击发送按钮，并检测调用链 ----
 questions=("hello" "who are you" "1+1" "what is love" "how big is the universe" "meaning of life" "weather today" "write a poem" "recommend a book" "how to be happy")
 success=0
 first_failure_logged=0
 for q in "${questions[@]}"; do
   echo "Sending: $q"
+  # 点击输入框获取焦点
   adb shell input tap 200 1800
-  sleep 0.5
+  sleep 1
+  # 输入文本
   for ((i=0; i<${#q}; i++)); do
     char="${q:$i:1}"
     case "$char" in
@@ -125,21 +127,22 @@ for q in "${questions[@]}"; do
     esac
     [ $keycode -ne 0 ] && adb shell input keyevent $keycode
   done
-  sleep 0.5
-  adb shell input keyevent 66
+  sleep 1
+  # 点击“降下神谕”按钮（坐标按1080x1920屏幕，按钮在右下区域）
+  adb shell input tap 900 1800
   sleep 20
 
-  # 检查是否生成推理 token
-  log=$(adb logcat -d | tail -50 | grep -i "generateStream 开始" || true)
+  # 检查生成流日志或 sendMessage 日志
+  log=$(adb logcat -d | tail -100 | grep -i "generateStream 开始\|sendMessage" || true)
   if [ -n "$log" ]; then
     echo "Reply found for '$q'"
     success=$((success + 1))
   else
     echo "No reply for '$q'"
-    # 如果是第一次失败，打印完整的 InferenceEngine 日志
+    # 如果是第一次失败，打印 ViewModel 和 Engine 的相关日志
     if [ $first_failure_logged -eq 0 ]; then
-      echo "=== Diagnostic: InferenceEngine logs for first failure ==="
-      adb logcat -d | grep -i "InferenceEngine" | tail -30
+      echo "=== Diagnostic: ChatViewModel/InferenceEngine logs for first failure ==="
+      adb logcat -d | grep -iE "ChatViewModel|InferenceEngine" | tail -30
       first_failure_logged=1
     fi
   fi
@@ -147,8 +150,8 @@ done
 
 echo "Success count: $success/10"
 if [ $success -lt 10 ]; then
-  echo "=== Final diagnostic: InferenceEngine logs ==="
-  adb logcat -d | grep -i "InferenceEngine" | tail -40
+  echo "=== Final diagnostic: Full logcat ==="
+  adb logcat -d | grep -iE "ChatViewModel|InferenceEngine" | tail -40
   exit 1
 fi
 
