@@ -4,11 +4,13 @@ set -e
 ANDROID_HOME="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
 WORKSPACE="${GITHUB_WORKSPACE:-$(pwd)}"
 
+# ---- 启用 KVM ----
 echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
 sudo udevadm control --reload-rules
 sudo udevadm trigger --name-match=kvm
 ls -l /dev/kvm
 
+# ---- 下载模型 ----
 rm -rf "${WORKSPACE}/model_files"
 mkdir -p "${WORKSPACE}/model_files"
 pip install -q huggingface_hub
@@ -35,10 +37,12 @@ os.rename('${WORKSPACE}/model_files/onnx/model_quantized.onnx', '${WORKSPACE}/mo
 shutil.rmtree('${WORKSPACE}/model_files/onnx')
 "
 
+# ---- 构建 x86_64 APK ----
 cd "${WORKSPACE}"
 sed -i 's/abiFilters += "arm64-v8a"/abiFilters += "x86_64"/g' app/build.gradle.kts
 gradle assembleDebug --no-build-cache -Dorg.gradle.jvmargs="-Xmx6g"
 
+# ---- 启动模拟器（4096MB）----
 yes | ${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager "platform-tools" "emulator" "system-images;android-29;google_apis;x86_64" 2>&1 | tail -3
 export PATH="${ANDROID_HOME}/platform-tools:${ANDROID_HOME}/emulator:${ANDROID_HOME}/cmdline-tools/latest/bin:$PATH"
 export ANDROID_AVD_HOME="$HOME/.config/.android/avd"
@@ -48,6 +52,7 @@ echo "no" | avdmanager create avd -n test_avd -k "system-images;android-29;googl
 ${ANDROID_HOME}/emulator/emulator -avd test_avd -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -netdelay none -netspeed full -no-snapshot -memory 4096 &
 EMULATOR_PID=$!
 
+# ---- 等待模拟器启动 ----
 for i in $(seq 1 60); do
   if ! kill -0 $EMULATOR_PID 2>/dev/null; then echo "Emulator died"; exit 1; fi
   if adb devices | grep -w "emulator-5554" | grep -q "device"; then break; fi
@@ -59,6 +64,7 @@ for i in $(seq 1 30); do
 done
 sleep 5
 
+# ---- 安装 APK ----
 APK="${WORKSPACE}/app/build/outputs/apk/debug/app-debug.apk"
 adb shell input keyevent 82
 adb shell wm dismiss-keyguard
@@ -67,6 +73,7 @@ adb install -g "$APK"
 adb shell pm grant com.eternal.ai android.permission.RECORD_AUDIO
 adb shell pm grant com.eternal.ai android.permission.CAMERA
 
+# ---- 推送模型 ----
 adb shell run-as com.eternal.ai mkdir -p files/model
 for f in ${WORKSPACE}/model_files/*; do
   local_file=$(basename "$f")
@@ -75,6 +82,7 @@ for f in ${WORKSPACE}/model_files/*; do
   adb shell rm "/data/local/tmp/$local_file"
 done
 
+# ---- 重启应用并等待引擎激活 ----
 adb shell am force-stop com.eternal.ai
 sleep 2
 adb shell am start -n com.eternal.ai/.SplashActivity
@@ -89,12 +97,16 @@ for i in $(seq 1 60); do
 done
 [ $activated -eq 0 ] && { echo "Engine not activated"; exit 1; }
 
+# ---- 创建设备端测试脚本并执行 ----
+adb push "${WORKSPACE}/ci_test_device.sh" /data/local/tmp/test_runner.sh
+adb shell chmod 755 /data/local/tmp/test_runner.sh
+
 questions=("hello" "who are you" "1+1" "what is love" "how big is the universe" "meaning of life" "weather today" "write a poem" "recommend a book" "how to be happy")
 success=0
 for q in "${questions[@]}"; do
-  echo "Sending via am start: $q"
-  adb shell am start -n com.eternal.ai/.MainActivity --es TEST_MESSAGE "$q" --ez TEST_MODE true
-  sleep 30
+  echo "Sending via device script: $q"
+  adb shell /data/local/tmp/test_runner.sh "$q"
+  sleep 25
   log=$(adb logcat -d | tail -30 | grep -i "Inference reply" || true)
   if [ -n "$log" ]; then
     echo "Reply found for '$q'"; success=$((success + 1))
