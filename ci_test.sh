@@ -82,11 +82,12 @@ for f in ${WORKSPACE}/model_files/*; do
   adb shell rm "/data/local/tmp/$local_file"
 done
 
-# ---- 重启应用并等待引擎激活 ----
+# ---- 重启应用（后台服务会自动启动文件监控） ----
 adb shell am force-stop com.eternal.ai
 sleep 2
 adb shell am start -n com.eternal.ai/.SplashActivity
 
+# ---- 等待引擎激活 ----
 echo "Waiting for engine activation..."
 activated=0
 for i in $(seq 1 60); do
@@ -97,24 +98,32 @@ for i in $(seq 1 60); do
 done
 [ $activated -eq 0 ] && { echo "Engine not activated"; exit 1; }
 
-# ---- 创建设备端测试脚本并执行 ----
-adb push "${WORKSPACE}/ci_test_device.sh" /data/local/tmp/test_runner.sh
-adb shell chmod 755 /data/local/tmp/test_runner.sh
-
+# ---- 文件驱动推理验证 ----
 questions=("hello" "who are you" "1+1" "what is love" "how big is the universe" "meaning of life" "weather today" "write a poem" "recommend a book" "how to be happy")
 success=0
 for q in "${questions[@]}"; do
-  echo "Sending via device script: $q"
-  adb shell /data/local/tmp/test_runner.sh "$q"
-  sleep 25
-  log=$(adb logcat -d | tail -30 | grep -i "Inference reply" || true)
-  if [ -n "$log" ]; then
-    echo "Reply found for '$q'"; success=$((success + 1))
-  else
+  echo "Testing: $q"
+  # 写入输入文件
+  echo "$q" | adb shell run-as com.eternal.ai tee files/test_input.txt > /dev/null
+  # 等待输出文件（最多60秒）
+  for i in $(seq 1 30); do
+    sleep 2
+    if adb shell run-as com.eternal.ai test -f files/test_output.txt; then
+      reply=$(adb shell run-as com.eternal.ai cat files/test_output.txt)
+      if [ -n "$reply" ] && [ "$reply" != "ERROR: Engine not loaded" ]; then
+        echo "Reply: $reply"
+        success=$((success + 1))
+        # 清空输出文件
+        adb shell run-as com.eternal.ai truncate -s 0 files/test_output.txt
+        break
+      fi
+    fi
+  done
+  if [ $success -eq 0 ] || [ "$reply" == "ERROR: Engine not loaded" ]; then
     echo "No reply for '$q'"
   fi
 done
 
 echo "Success count: $success/10"
-[ $success -lt 10 ] && { echo "=== Diagnostic ==="; adb logcat -d | grep -iE "MainActivity|InferenceEngine" | tail -30; exit 1; }
+[ $success -lt 10 ] && { echo "=== Diagnostic ==="; adb logcat -d | grep -iE "EternalService|InferenceEngine" | tail -30; exit 1; }
 kill $EMULATOR_PID || true
